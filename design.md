@@ -26,11 +26,16 @@ benchmark:
   output_dir: string              # Where results/plots are stored . by default it is under results subdirectory of current directory. will be created if it doesn't exist.
   
 hosts:
-  <alias>: <hostname/ip>          # Named host references
-  local: local            # Local host reference
+  <alias>:
+    ip: string # required
+    username: string # required
+    password: string # optional
+    key_file: string # required
+    key_password: string # optional
+  local:           # Local host reference, doesnt need any configuration
 
 data_schema:
-  format: csv
+  format: csv # just csv for now
   <header_name>:                        # Column definitions for CSV output
     - type: [timestamp|integer|float|string]
     - unit: string (optional) # for example ms, ns for time , or custom string for other units like bytes, etc. This needs to be clearly defined in the documentation. Like for example bytes, B, KB, MB, GB, etc. This can then be used for plotting and data analysis.
