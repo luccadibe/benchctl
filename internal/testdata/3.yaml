@@ -1,0 +1,22 @@
+benchmark:
+  name: bad-healthcheck
+  output_dir: ./results
+
+hosts:
+  local: {}
+
+data_schema:
+  format: csv
+  value:
+    type: integer
+
+stages:
+  - name: bad-hc
+    host: local
+    command: echo "hello"
+    health_check:
+      type: unknown
+      target: anything
+      timeout: -5s
+      retries: -1
+

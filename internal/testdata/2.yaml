@@ -1,0 +1,18 @@
+benchmark:
+  name: missing-stage-command-or-script
+  output_dir: ./results
+
+hosts:
+  local: {}
+
+data_schema:
+  format: csv
+  ts:
+    type: timestamp
+
+stages:
+  - name: invalid-stage
+    host: local
+    # neither command nor script provided -> should fail validation
+
+
