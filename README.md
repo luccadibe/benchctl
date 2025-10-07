@@ -1,0 +1,203 @@
+# Benchctl
+
+A CLI framework for orchestrating benchmarks across distributed or local setups. 
+Designed for research benchmarking scenarios with workflow coordination, data collection, visualization, and result management.
+
+## Motivation
+
+As a part of my studies and work, I had to write many different benchmarks.
+And consistently, I lost a lot of time in plumbing work:
+- Managing a bunch of different ssh connections to different VMs
+- Copying files over different filesystems
+- Running commands everywhere
+- Plotting data 
+
+So I decided to write a framework that would take care of all of this for me.
+It ended up turning into a specialized "workflow engine" of sorts.
+I also looked into Apache Airflow, but it was too complex for this use case.
+
+## Features
+
+- **Distributed Execution**: Run benchmarks across multiple remote hosts or locally
+- **YAML Configuration**: Declarative workflow definition with hosts, stages, and plots
+- **Health Checks**: Built-in readiness detection (port, HTTP, file, process, command)
+- **Data Collection**: Automatic file collection via SCP with schema validation
+- **Visualization**: Auto-generated plots (time series, histograms, boxplots)
+- **Metadata Tracking**: Custom metadata support for benchmark runs
+- **Result Management**: Organized storage with run IDs and comprehensive metadata
+
+## Installation
+
+TODO
+
+## Quick Start
+
+1. **Create Configuration** (`benchmark.yaml`):
+```yaml
+benchmark:
+  name: my-benchmark
+  output_dir: ./results
+
+hosts:
+  local: {}  # Local execution
+  server1:
+    ip: 192.168.1.100
+    username: user
+    key_file: ~/.ssh/id_rsa
+
+stages:
+  - name: setup
+    host: local
+    command: echo "Setting up benchmark..."
+    
+  - name: start-server
+    host: server1
+    command: docker run -d -p 8080:8080 my-server:latest
+    health_check:
+      type: port
+      target: "8080"
+      timeout: 30s
+
+  - name: run-load-test
+    host: local
+    script: load-generator.sh
+    outputs:
+      - name: results
+        remote_path: /tmp/results.csv
+        data_schema:
+          format: csv
+          timestamp:
+            type: timestamp
+            unit: s
+          latency_ms:
+            type: float
+            unit: ms
+
+plots:
+  - name: latency-over-time
+    title: Request Latency Over Time
+    source: results
+    type: time_series
+    x: timestamp
+    y: latency_ms
+    format: png
+```
+
+2. **Run Benchmark**:
+```bash
+benchctl --config benchmark.yaml
+```
+
+3. **View Results**:
+```bash
+# Results saved to ./results/run-001/
+# Check metadata.json for run details
+# Generated plots in ./results/run-001/plots/
+```
+
+## Configuration Reference
+
+### Hosts
+Define execution environments:
+
+```yaml
+hosts:
+  local: {}  # Local host
+  remote:
+    ip: 10.0.0.1
+    username: benchmark
+    key_file: ~/.ssh/benchmark_key
+    password: optional_password
+```
+
+### Stages
+Sequential workflow steps:
+
+```yaml
+stages:
+  - name: build
+    host: local
+    command: make build
+    
+  - name: deploy
+    host: remote
+    script: deploy.sh
+    health_check:
+      type: http
+      target: "http://localhost:8080/health"
+    
+  - name: load-test
+    host: local
+    script: load-test.sh
+    outputs:
+      - name: metrics
+        remote_path: /tmp/metrics.csv
+```
+
+### Data Schema
+Define CSV column types for validation and plotting:
+
+```yaml
+data_schema:
+  format: csv
+  timestamp:
+    type: timestamp
+    unit: s
+  latency_ms:
+    type: float
+    unit: ms
+  status:
+    type: string
+```
+
+### Plots
+Auto-generated visualizations:
+
+```yaml
+plots:
+  - name: latency-histogram
+    title: Latency Distribution
+    source: metrics
+    type: histogram
+    x: latency_ms
+    
+  - name: throughput-timeseries
+    title: Requests Over Time
+    source: metrics
+    type: time_series
+    x: timestamp
+    y: requests_per_second
+```
+
+## Usage
+
+### Basic Commands
+
+```bash
+# Run benchmark
+benchctl --config benchmark.yaml
+
+# Add custom metadata
+benchctl --config benchmark.yaml --metadata "branch"="main" --metadata "commit"="abc123"
+
+# View help
+benchctl --help
+```
+
+## Examples
+
+See the [`examples/`](examples/) directory for complete benchmark configurations.
+- Local container testing
+
+## Roadmap
+
+- [ ] Add a local Web UI for viewing benchmark results and plots.
+- [ ] Abstract plot generation to allow for custom plot generation
+- [ ] Add a seaborn-based plot generator.
+- [ ] Maybe add support for data analysis? Might be too much.
+
+
+## License
+
+MIT
+

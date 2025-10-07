@@ -34,11 +34,7 @@ hosts:
     key_password: string # optional
   local:           # Local host reference, doesnt need any configuration
 
-data_schema:
-  format: csv # just csv for now
-  <header_name>:                        # Column definitions for CSV output
-    - type: [timestamp|integer|float|string]
-    - unit: string (optional) # for example ms, ns for time , or custom string for other units like bytes, etc. This needs to be clearly defined in the documentation. Like for example bytes, B, KB, MB, GB, etc. This can then be used for plotting and data analysis.
+# data_schema is now moved to stages[].outputs[].data_schema
 
 stages:
   - name: string # name of the stage. This needs to be unique within the benchmark.
@@ -52,12 +48,19 @@ stages:
       timeout: duration
       retries: integer
     outputs:                      # Files to collect (optional)
-      - remote_path: string
+      - name: string              # Unique name for this output (required)
+        remote_path: string
         local_path: string # local path to save the file. if not provided, the file will be saved in the output_dir for the benchmark run. like ./results/run-001/some_file.txt
+        data_schema:              # Schema definition for the output file (optional)
+          format: csv # just csv for now
+          <header_name>:          # Column definitions for CSV output
+            - type: [timestamp|integer|float|string]
+            - unit: string (optional) # for example ms, ns for time , or custom string for other units like bytes, etc. This needs to be clearly defined in the documentation. Like for example bytes, B, KB, MB, GB, etc. This can then be used for plotting and data analysis.
 
 plots: # optional
   - name: string # name of the plot. This needs to be unique within the benchmark.
     title: string # title of the plot. This will be used as the title of the plot.
+    source: string # name of the output to use as data source
     type: [time_series|histogram|boxplot]
     x: [string] # x axis column name. This needs to be a valid column name in the data_schema.
     y: [string] # y axis column name. This needs to be a valid column name in the data_schema.
