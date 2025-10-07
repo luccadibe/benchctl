@@ -1,3 +1,5 @@
+//go:build unit
+
 package internal
 
 import (
@@ -28,6 +30,29 @@ func TestLoadConfig_Success(t *testing.T) {
 	}
 	if len(cfg.Stages) == 0 {
 		t.Fatalf("expected stages to be non-empty")
+	}
+	// Check that data_schema is now in outputs
+	if len(cfg.Stages) > 1 && len(cfg.Stages[1].Outputs) > 0 {
+		output := cfg.Stages[1].Outputs[0]
+		if output.Name == "" {
+			t.Fatalf("expected output name to be set")
+		}
+		if output.DataSchema == nil {
+			t.Fatalf("expected data_schema to be set in output")
+		}
+		if output.DataSchema.Format != "csv" {
+			t.Fatalf("expected data_schema.format to be csv, got %s", output.DataSchema.Format)
+		}
+		if len(output.DataSchema.Columns) == 0 {
+			t.Fatalf("expected data_schema.columns to be non-empty")
+		}
+	}
+	// Check that plots reference outputs correctly
+	if len(cfg.Plots) > 0 {
+		plot := cfg.Plots[0]
+		if plot.Source == "" {
+			t.Fatalf("expected plot source to be set")
+		}
 	}
 }
 

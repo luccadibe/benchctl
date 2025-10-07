@@ -9,17 +9,6 @@ hosts:
     username: ubuntu
     key_file: ~/.ssh/id_rsa
 
-data_schema:
-  format: csv
-  timestamp:
-    type: timestamp
-    unit: ns
-  latency_ms:
-    type: float
-    unit: ms
-  status:
-    type: string
-
 stages:
   - name: start-db
     host: db
@@ -33,12 +22,24 @@ stages:
     host: local
     script: ./scripts/load-gen.sh
     outputs:
-      - remote_path: /tmp/data.csv
+      - name: benchmark_data
+        remote_path: /tmp/data.csv
         local_path: ./results/run-001/data.csv
+        data_schema:
+          format: csv
+          timestamp:
+            type: timestamp
+            unit: ns
+          latency_ms:
+            type: float
+            unit: ms
+          status:
+            type: string
 
 plots:
   - name: latency_over_time
     title: Latency over time
+    source: benchmark_data
     type: time_series
     x: timestamp
     y: latency_ms

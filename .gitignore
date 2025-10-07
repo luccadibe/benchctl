@@ -1,0 +1,5 @@
+
+# Test SSH keys
+test/testdata/ssh/test_key
+test/testdata/ssh/test_key.pub
+test/testdata/ssh/authorized_keys
