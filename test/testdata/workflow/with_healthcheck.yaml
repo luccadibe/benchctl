@@ -1,0 +1,21 @@
+benchmark:
+  name: healthcheck-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  test-host:
+    ip: localhost
+    port: 2224
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: test-healthcheck
+    host: test-host
+    command: echo "12312132"
+    health_check:
+      type: port
+      target: "8080"
+      timeout: 5s
+      retries: 3
+

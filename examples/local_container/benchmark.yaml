@@ -1,0 +1,87 @@
+benchmark:
+  name: local-container-example
+  output_dir: ./results
+
+hosts:
+  local: {}
+
+stages:
+  - name: build-docker-image
+    host: local
+    command: docker build -t local-container-server:latest .
+
+  - name: start-container
+    host: local
+    command: |
+      # Stop and remove any existing container
+      docker stop local-container-server 2>/dev/null || true
+      docker rm local-container-server 2>/dev/null || true
+      
+      # Start the new container
+      docker run -d \
+        --name local-container-server \
+        -p 8080:8080 \
+        -e BASE_DELAY=100 \
+        -e VARIANCE=50 \
+        -e ERROR_RATE=0.05 \
+        local-container-server:latest
+    health_check:
+      type: port
+      target: "8080"
+      timeout: 30s
+      retries: 10
+
+  - name: run-load-test
+    host: local
+    script: load_generator.sh
+    outputs:
+      - name: load_test_results
+        remote_path: /tmp/load_test_results.csv
+        local_path: ./results/load_test_results.csv
+        data_schema:
+          format: csv
+          timestamp:
+            type: timestamp
+            unit: s
+          latency_ms:
+            type: float
+            unit: ms
+          status:
+            type: string
+          response_time_ms:
+            type: float
+            unit: ms
+
+  - name: cleanup-container
+    host: local
+    command: |
+      docker stop local-container-server || true
+      docker rm local-container-server || true
+      echo "Container cleaned up successfully"
+
+plots:
+  - name: latency_over_time
+    title: Request Latency Over Time
+    source: load_test_results
+    type: time_series
+    x: timestamp
+    y: latency_ms
+    format: png
+    export_path: ./results/plots/latency_over_time.png
+
+  - name: latency_distribution
+    title: Latency Distribution
+    source: load_test_results
+    type: histogram
+    x: latency_ms
+    format: png
+    export_path: ./results/plots/latency_distribution.png
+
+  - name: latency_boxplot
+    title: Server Latency by Task Type
+    source: load_test_results
+    type: boxplot
+    x: task_type
+    y: latency_ms
+    format: png
+    export_path: ./results/plots/latency_boxplot.png

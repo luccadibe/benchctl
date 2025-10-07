@@ -1,0 +1,24 @@
+benchmark:
+  name: output-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  test-host:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: create-file
+    host: test-host
+    command: echo "test output data" > /config/test_output.txt
+    outputs:
+      - name: test_output
+        remote_path: /config/test_output.txt
+        local_path: /tmp/benchctl-test-collected.txt
+        data_schema:
+          format: csv
+          timestamp:
+            type: timestamp
+

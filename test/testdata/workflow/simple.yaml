@@ -1,0 +1,16 @@
+benchmark:
+  name: simple-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  test-host:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: echo-test
+    host: test-host
+    command: echo "hello from workflow"
+

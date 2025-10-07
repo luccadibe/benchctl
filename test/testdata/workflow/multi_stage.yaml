@@ -1,0 +1,27 @@
+benchmark:
+  name: multi-stage-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  host1:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+  host2:
+    ip: localhost
+    port: 2223
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: stage1
+    host: host1
+    command: echo "stage 1"
+  - name: stage2
+    host: host2
+    command: echo "stage 2"
+  - name: stage3
+    host: host1
+    command: whoami
+

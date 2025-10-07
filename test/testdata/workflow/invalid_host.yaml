@@ -1,0 +1,16 @@
+benchmark:
+  name: invalid-host-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  test-host:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: bad-stage
+    host: nonexistent-host
+    command: echo "this should fail"
+

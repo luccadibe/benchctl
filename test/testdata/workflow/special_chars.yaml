@@ -1,0 +1,15 @@
+benchmark:
+  name: special-chars-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  test-host:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: special-chars
+    host: test-host
+    command: echo "test with 'quotes' and \"double quotes\" and $VAR"
