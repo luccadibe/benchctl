@@ -97,3 +97,76 @@ func TestLoadConfig_BadHealthCheck(t *testing.T) {
 		t.Fatalf("expected retries validation error, got: %v", msg)
 	}
 }
+
+// TestTimestampFormatValid ensures timestamp format is accepted when valid.
+func TestTimestampFormatValid(t *testing.T) {
+	yaml := `
+benchmark:
+  name: ts-format-valid
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: gen
+    host: local
+    script: gen.sh
+    outputs:
+      - name: data
+        remote_path: /tmp/data.csv
+        data_schema:
+          format: csv
+          timestamp:
+            type: timestamp
+            unit: s
+            format: unix
+          value:
+            type: float
+`
+	cfg, err := ParseYAML([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error parsing valid timestamp format: %v", err)
+	}
+	if len(cfg.Stages) == 0 || len(cfg.Stages[0].Outputs) == 0 || cfg.Stages[0].Outputs[0].DataSchema == nil {
+		t.Fatalf("expected stage/output/schema to be present")
+	}
+	col, ok := cfg.Stages[0].Outputs[0].DataSchema.Columns["timestamp"]
+	if !ok {
+		t.Fatalf("expected timestamp column in data_schema")
+	}
+	if strings.ToLower(col.Format) != "unix" {
+		t.Fatalf("expected timestamp format 'unix', got %q", col.Format)
+	}
+}
+
+// TestTimestampFormatInvalid ensures invalid timestamp format triggers validation error.
+func TestTimestampFormatInvalid(t *testing.T) {
+	yaml := `
+benchmark:
+  name: ts-format-invalid
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: gen
+    host: local
+    script: gen.sh
+    outputs:
+      - name: data
+        remote_path: /tmp/data.csv
+        data_schema:
+          format: csv
+          timestamp:
+            type: timestamp
+            unit: s
+            format: not_a_real_format
+          value:
+            type: float
+`
+	_, err := ParseYAML([]byte(yaml))
+	if err == nil {
+		t.Fatalf("expected error for invalid timestamp format")
+	}
+	if !strings.Contains(err.Error(), "data_schema.timestamp.format must be one of") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

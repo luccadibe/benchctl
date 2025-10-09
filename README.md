@@ -69,6 +69,7 @@ stages:
           timestamp:
             type: timestamp
             unit: s
+            format: unix
           latency_ms:
             type: float
             unit: ms
@@ -80,7 +81,15 @@ plots:
     type: time_series
     x: timestamp
     y: latency_ms
+    engine: seaborn
     format: png
+    export_path: ./plots/latency_over_time.png
+    options:
+      dpi: 150
+      width_px: 1200
+      height_px: 600
+      x_label_angle: 45
+      x_timestamp_format: medium
 ```
 
 2. **Run Benchmark**:
@@ -90,10 +99,21 @@ benchctl --config benchmark.yaml
 
 3. **View Results**:
 ```bash
-# Results saved to ./results/run-001/
+# Results saved to ./results/1/...
 # Check metadata.json for run details
-# Generated plots in ./results/run-001/plots/
+# Generated plots in ./results/1/plots/
 ```
+
+## Plotting engines
+
+- Default engine: `seaborn` (Python) via `uv run` with an embedded script (PEP 723).
+- Alternative: `gonum` (pure Go).
+
+### Python/uv requirements (for seaborn)
+
+- You need `python >= 3.10` and [uv](https://docs.astral.sh/uv/) available on your PATH.
+- First run downloads Python deps into uv’s cache; subsequent runs are fast.
+- No virtualenvs or repo Python files required; everything is embedded and invoked via `uv run`.
 
 ## Configuration Reference
 
@@ -143,6 +163,7 @@ data_schema:
   timestamp:
     type: timestamp
     unit: s
+    format: unix   # optional; supported: unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601
   latency_ms:
     type: float
     unit: ms
@@ -192,8 +213,6 @@ See the [`examples/`](examples/) directory for complete benchmark configurations
 ## Roadmap
 
 - [ ] Add a local Web UI for viewing benchmark results and plots.
-- [ ] Abstract plot generation to allow for custom plot generation
-- [ ] Add a seaborn-based plot generator.
 - [ ] Maybe add support for data analysis? Might be too much.
 
 

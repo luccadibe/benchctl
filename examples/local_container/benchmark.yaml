@@ -67,7 +67,15 @@ plots:
     x: timestamp
     y: latency_ms
     format: png
-    export_path: ./results/plots/latency_over_time.png
+    export_path: ./plots/latency_over_time.png
+    engine: seaborn
+    options:
+      style: whitegrid
+      dpi: 150
+      width_px: 1200
+      height_px: 600
+      x_label_angle: 45
+      x_timestamp_format: medium
 
   - name: latency_distribution
     title: Latency Distribution
@@ -75,7 +83,11 @@ plots:
     type: histogram
     x: latency_ms
     format: png
-    export_path: ./results/plots/latency_distribution.png
+    export_path: ./plots/latency_distribution.png
+    engine: seaborn
+    options:
+      style: whitegrid
+      bins: 30
 
   - name: latency_boxplot
     title: Server Latency by Task Type
@@ -84,4 +96,8 @@ plots:
     x: task_type
     y: latency_ms
     format: png
-    export_path: ./results/plots/latency_boxplot.png
+    export_path: ./plots/latency_boxplot.png
+    engine: seaborn
+    options:
+      style: whitegrid
+      bins: 30

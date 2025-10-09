@@ -54,6 +54,8 @@ type DataSchema struct {
 type DataColumn struct {
 	Type DataType `yaml:"type" json:"type" jsonschema:"enum=timestamp,enum=integer,enum=float,enum=string"`
 	Unit string   `yaml:"unit,omitempty" json:"unit,omitempty"`
+	// Format is only applicable for timestamp type. Supported: unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601
+	Format string `yaml:"format,omitempty" json:"format,omitempty"`
 }
 
 // UnmarshalYAML supports a mixed mapping of a fixed field (format) and arbitrary column keys.
@@ -131,15 +133,17 @@ type Output struct {
 
 // Plot is a future feature for visualization configuration.
 type Plot struct {
-	Name        string `yaml:"name" json:"name"`
-	Title       string `yaml:"title" json:"title"`
-	Source      string `yaml:"source" json:"source"` // Reference to output name
-	Type        string `yaml:"type" json:"type" jsonschema:"enum=time_series,enum=histogram,enum=boxplot"`
-	X           string `yaml:"x,omitempty" json:"x,omitempty"`
-	Y           string `yaml:"y,omitempty" json:"y,omitempty"`
-	Aggregation string `yaml:"aggregation,omitempty" json:"aggregation,omitempty" jsonschema:"enum=avg,enum=median,enum=p95,enum=p99"`
-	Format      string `yaml:"format,omitempty" json:"format,omitempty" jsonschema:"enum=png,enum=svg,enum=pdf"`
-	ExportPath  string `yaml:"export_path,omitempty" json:"export_path,omitempty"`
+	Name        string         `yaml:"name" json:"name"`
+	Title       string         `yaml:"title" json:"title"`
+	Source      string         `yaml:"source" json:"source"` // Reference to output name
+	Type        string         `yaml:"type" json:"type" jsonschema:"enum=time_series,enum=histogram,enum=boxplot"`
+	X           string         `yaml:"x,omitempty" json:"x,omitempty"`
+	Y           string         `yaml:"y,omitempty" json:"y,omitempty"`
+	Aggregation string         `yaml:"aggregation,omitempty" json:"aggregation,omitempty" jsonschema:"enum=avg,enum=median,enum=p95,enum=p99"`
+	Format      string         `yaml:"format,omitempty" json:"format,omitempty" jsonschema:"enum=png,enum=svg,enum=pdf"`
+	ExportPath  string         `yaml:"export_path,omitempty" json:"export_path,omitempty"`
+	Engine      string         `yaml:"engine,omitempty" json:"engine,omitempty" jsonschema:"enum=gonum,enum=seaborn"` // default seaborn
+	Options     map[string]any `yaml:"options,omitempty" json:"options,omitempty"`
 }
 
 // ParseYAML loads and validates configuration using strict decoding.
@@ -234,6 +238,15 @@ func validateConfig(cfg *Config) error {
 						errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.%s.type must be one of [timestamp, integer, float, string]", i, j, colName))
 					}
 					_ = col.Unit // unit is optional
+					// If timestamp with format, validate allowed formats
+					if col.Type == DataTypeTimestamp && strings.TrimSpace(col.Format) != "" {
+						switch strings.ToLower(col.Format) {
+						case "unix", "unix_ms", "unix_us", "unix_ns", "rfc3339", "rfc3339_nano", "iso8601":
+							// ok
+						default:
+							errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.%s.format must be one of [unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601]", i, j, colName))
+						}
+					}
 				}
 			}
 		}
@@ -282,6 +295,16 @@ func validateConfig(cfg *Config) error {
 			default:
 				errs = append(errs, fmt.Sprintf("plots[%d].format must be one of [png, svg, pdf]", i))
 			}
+		}
+		if strings.TrimSpace(plot.Engine) != "" {
+			switch plot.Engine {
+			case "gonum", "seaborn":
+				// ok
+			default:
+				errs = append(errs, fmt.Sprintf("plots[%d].engine must be one of [gonum, seaborn]", i))
+			}
+		} else {
+			plot.Engine = "seaborn" // default to seaborn
 		}
 	}
 

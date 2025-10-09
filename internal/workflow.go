@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -159,6 +160,15 @@ func RunWorkflow(cfg *Config, customMetadata map[string]string) {
 					logger.Fatalf("Failed to collect output %s for stage %s: %v", output.Name, stage.Name, err)
 				}
 				logger.Printf("Collected output %s: %s -> %s", output.Name, remotePath, localPath)
+
+				// Warn if timestamp columns lack explicit format
+				if output.DataSchema != nil {
+					for colName, col := range output.DataSchema.Columns {
+						if col.Type == DataTypeTimestamp && strings.TrimSpace(col.Format) == "" {
+							logger.Printf("WARNING: data_schema.%s has type=timestamp without format; falling back to auto-detection which may be slower/ambiguous", colName)
+						}
+					}
+				}
 			}
 		}
 
@@ -176,6 +186,7 @@ func RunWorkflow(cfg *Config, customMetadata map[string]string) {
 		for _, plot := range cfg.Plots {
 			logger.Printf("Generating plot: %s", plot.Name)
 			var dataSourcePath string
+			var matchedOutput *Output
 			for _, stage := range cfg.Stages {
 				if stage.Outputs == nil {
 					continue
@@ -190,6 +201,7 @@ func RunWorkflow(cfg *Config, customMetadata map[string]string) {
 						} else {
 							dataSourcePath = output.LocalPath
 						}
+						matchedOutput = &output
 						break
 					}
 				}
@@ -200,11 +212,64 @@ func RunWorkflow(cfg *Config, customMetadata map[string]string) {
 				logger.Fatalf("plot %s references unknown output %s", plot.Name, plot.Source)
 			}
 
-			// Set plot export path to run plots directory
-			plotExportPath := filepath.Join(plotsDir, plot.Name+".png")
+			// Resolve export path: use config if provided, else default under run plots dir
+			var plotExportPath string
+			if plot.ExportPath != "" {
+				if filepath.IsAbs(plot.ExportPath) {
+					plotExportPath = plot.ExportPath
+				} else {
+					plotExportPath = filepath.Join(runDir, plot.ExportPath)
+				}
+			} else {
+				plotExportPath = filepath.Join(plotsDir, plot.Name+".png")
+			}
+
+			// Ensure export directory exists
+			exportDir := filepath.Dir(plotExportPath)
+			if err := os.MkdirAll(exportDir, 0755); err != nil {
+				logger.Fatalf("Failed to create plot export directory: %v", err)
+			}
+
+			// Make paths absolute for external engines
+			absDataPath, err := filepath.Abs(dataSourcePath)
+			if err == nil {
+				dataSourcePath = absDataPath
+			}
+			absExportPath, err := filepath.Abs(plotExportPath)
+			if err == nil {
+				plotExportPath = absExportPath
+			}
 
 			// Generate the plot
-			if err := GeneratePlot(plot, dataSourcePath, plotExportPath); err != nil {
+			var plotter Plotter
+			// Attach timestamp hint from data_schema (if available) for seaborn engine
+			plotToRender := plot
+			if plot.Engine == "" || plot.Engine == "seaborn" {
+				if matchedOutput != nil && matchedOutput.DataSchema != nil {
+					if col, ok := matchedOutput.DataSchema.Columns[plot.X]; ok {
+						if col.Type == DataTypeTimestamp {
+							if plotToRender.Options == nil {
+								plotToRender.Options = map[string]any{}
+							}
+							if strings.TrimSpace(col.Format) != "" {
+								plotToRender.Options["x_time_format"] = strings.ToLower(col.Format)
+							}
+							if strings.TrimSpace(col.Unit) != "" {
+								plotToRender.Options["x_time_unit"] = strings.ToLower(col.Unit)
+							}
+						}
+					}
+				}
+			}
+			switch plot.Engine {
+			case "", "seaborn":
+				plotter = NewSeabornPlotter()
+			case "gonum":
+				plotter = NewGonumPlotter()
+			default:
+				logger.Fatalf("unknown plot engine: %s", plot.Engine)
+			}
+			if err := plotter.GeneratePlot(ctx, plotToRender, dataSourcePath, plotExportPath); err != nil {
 				logger.Fatalf("failed to generate plot %s: %v", plot.Name, err)
 			}
 		}

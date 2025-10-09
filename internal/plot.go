@@ -1,11 +1,15 @@
 package internal
 
 import (
+	"context"
+	_ "embed"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image/color"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +19,14 @@ import (
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
 )
+
+type Plotter interface {
+	GeneratePlot(ctx context.Context, plot Plot, dataPath, exportPath string) error
+}
+
+type GonumPlotter struct{}
+
+func NewGonumPlotter() Plotter { return &GonumPlotter{} }
 
 // Default plot settings
 const (
@@ -117,7 +129,7 @@ func parseFloatValue(s string) (float64, error) {
 	return 0, fmt.Errorf("unable to parse as number: %s", s)
 }
 
-func GeneratePlot(plot Plot, dataSourcePath, exportPath string) error {
+func (g *GonumPlotter) GeneratePlot(_ context.Context, plot Plot, dataSourcePath, exportPath string) error {
 	data, err := os.ReadFile(dataSourcePath)
 	if err != nil {
 		return err
@@ -290,4 +302,76 @@ func createBoxPlot(p *gonumplot.Plot, data *CSVData, plot Plot) error {
 	}
 
 	return nil
+}
+
+//go:embed seaborn/seaborn_runner.py
+var seabornScript []byte
+
+type seabornSpec struct {
+	Type   string                 `json:"type"`
+	Title  string                 `json:"title"`
+	X      string                 `json:"x"`
+	Y      string                 `json:"y"`
+	Format string                 `json:"format"`
+	Opts   map[string]interface{} `json:"opts,omitempty"`
+	// Optional timestamp parsing hints derived from data_schema
+	XTimeFormat string `json:"x_time_format,omitempty"`
+	XTimeUnit   string `json:"x_time_unit,omitempty"`
+}
+
+type SeabornPlotter struct {
+	UVPath      string // optional override
+	PythonPath  string // optional override
+	WorkDirBase string // optional temp dir base
+}
+
+func NewSeabornPlotter() Plotter { return &SeabornPlotter{} }
+
+func (s *SeabornPlotter) GeneratePlot(ctx context.Context, plot Plot, dataPath, exportPath string) error {
+	uv := s.UVPath
+	if uv == "" {
+		uv = "uv"
+	} // rely on PATH; optionally auto-install to ~/.benchctl/bin
+	spec := seabornSpec{
+		Type: plot.Type, Title: plot.Title, X: plot.X, Y: plot.Y,
+		Format: coalesce(plot.Format, "png"), Opts: plot.Options,
+	}
+
+	// Try to propagate timestamp format/unit from config data_schema for the source
+	// We search the stage outputs for the plot.Source and pick the x column metadata if present
+	// This is best-effort; seaborn runner still falls back to auto-detection if absent
+	// Note: We don't have Config here, so we cannot inspect schema directly. Users should set options or rely on auto.
+
+	tmpDir, err := os.MkdirTemp(s.WorkDirBase, "benchctl-seaborn-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	scriptPath := filepath.Join(tmpDir, "seaborn_runner.py")
+	if err := os.WriteFile(scriptPath, seabornScript, 0644); err != nil {
+		return err
+	}
+
+	specPath := filepath.Join(tmpDir, "spec.json")
+	b, _ := json.Marshal(spec)
+	if err := os.WriteFile(specPath, b, 0644); err != nil {
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, uv, "run", scriptPath, "--input", dataPath, "--output", exportPath, "--spec", specPath)
+	cmd.Env = os.Environ()
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return errors.New(string(out))
+	}
+	return nil
+}
+
+func coalesce(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
 }
