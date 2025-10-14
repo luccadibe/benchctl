@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdn.jsdelivr.net/gh/luccadibe/benchctl@main/cmd/schema/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/luccadibe/benchctl/main/cmd/schema/schema.json
 benchmark:
   name: my-benchmark
   output_dir: ./results
