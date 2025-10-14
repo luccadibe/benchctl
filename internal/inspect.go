@@ -14,16 +14,10 @@ import (
 func InspectRun(runPath string, verbose bool) string {
 	// find metadata.json in the runPath
 	metadataPath := filepath.Join(runPath, "metadata.json")
-	data, err := os.ReadFile(metadataPath)
+	runmd, err := LoadRunMetadata(metadataPath)
 	if err != nil {
-		return "Error reading run metadatafile: " + err.Error()
+		return "Error loading run metadata: " + err.Error()
 	}
-	var runmd RunMetadata
-	err = json.Unmarshal(data, &runmd)
-	if err != nil {
-		return "Error unmarshalling run metadata: " + err.Error()
-	}
-
 	out := strings.Builder{}
 	out.WriteString("Start time: " + runmd.StartTime.Format(time.RFC3339) + "\n")
 	out.WriteString("End time: " + runmd.EndTime.Format(time.RFC3339) + "\n")
@@ -47,14 +41,9 @@ func AddMetadata(runPath string, extraMetadata map[string]string) error {
 
 	// find metadata.json in the runPath
 	metadataPath := filepath.Join(runPath, "metadata.json")
-	data, err := os.ReadFile(metadataPath)
+	runmd, err := LoadRunMetadata(metadataPath)
 	if err != nil {
-		return fmt.Errorf("error reading run metadatafile: %w", err)
-	}
-	var runmd RunMetadata
-	err = json.Unmarshal(data, &runmd)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling run metadata: %w", err)
+		return fmt.Errorf("error loading run metadata: %w", err)
 	}
 	for key, value := range extraMetadata {
 		runmd.Custom[key] = value
@@ -67,4 +56,17 @@ func AddMetadata(runPath string, extraMetadata map[string]string) error {
 		return fmt.Errorf("error writing run metadata: %w", err)
 	}
 	return nil
+}
+
+func LoadRunMetadata(filePath string) (*RunMetadata, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading run metadatafile: %w", err)
+	}
+	var runmd RunMetadata
+	err = json.Unmarshal(data, &runmd)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling run metadata: %w", err)
+	}
+	return &runmd, nil
 }

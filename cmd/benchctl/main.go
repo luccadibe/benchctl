@@ -175,6 +175,42 @@ func main() {
 					metadataFlag,
 				},
 			},
+			// compare
+			{
+				Name:  "compare",
+				Usage: "Compare two benchmark runs",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					runId1 := cmd.Args().Get(0)
+					runId2 := cmd.Args().Get(1)
+					if runId1 == "" {
+						return fmt.Errorf("first run-id is required")
+					}
+					if runId2 == "" {
+						return fmt.Errorf("second run-id is required")
+					}
+					cfgFile := cmd.String(configFlag.Name)
+					cfg, err := parseConfig(cfgFile)
+					if err != nil {
+						return err
+					}
+					runPath1 := filepath.Join(cfg.Benchmark.OutputDir, runId1)
+					runPath2 := filepath.Join(cfg.Benchmark.OutputDir, runId2)
+					runmd1, err := internal.LoadRunMetadata(filepath.Join(runPath1, "metadata.json"))
+					if err != nil {
+						return err
+					}
+					runmd2, err := internal.LoadRunMetadata(filepath.Join(runPath2, "metadata.json"))
+					if err != nil {
+						return err
+					}
+					results, err := internal.CompareRunMetadata(runmd1, runmd2)
+					if err != nil {
+						return err
+					}
+					fmt.Println(internal.PrintComparisonResults(results))
+					return nil
+				},
+			},
 		},
 	}
 

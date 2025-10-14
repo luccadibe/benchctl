@@ -202,8 +202,17 @@ benchctl run --config benchmark.yaml
 # Add custom metadata
 benchctl run --config benchmark.yaml --metadata "someFeature"="true" --metadata "someOtherFeature"="false"
 
+# Inspect a run
+benchctl inspect <run-id>
+
+# Add some metadata to a run
+benchctl edit <run-id>  --metadata "hello"="world"
+
 # View help
 benchctl --help
+
+# Compare two runs
+benchctl compare <run-id1> <run-id2>
 ```
 
 ### Metadata
