@@ -111,9 +111,12 @@ type Stage struct {
 	Host    string `yaml:"host,omitempty" json:"host,omitempty"`
 	Command string `yaml:"command,omitempty" json:"command,omitempty"`
 	// Script is a path to the script to execute. It will be copied to the host and executed.
-	Script      string       `yaml:"script,omitempty" json:"script,omitempty"`
-	HealthCheck *HealthCheck `yaml:"health_check,omitempty" json:"health_check,omitempty"`
-	Outputs     []Output     `yaml:"outputs,omitempty" json:"outputs,omitempty"`
+	Script string `yaml:"script,omitempty" json:"script,omitempty"`
+	// If true, the command/script stdout is expected to be a JSON object whose
+	// keys/values will be appended to run metadata under .Custom
+	AppendMetadata bool         `yaml:"append_metadata,omitempty" json:"append_metadata,omitempty"`
+	HealthCheck    *HealthCheck `yaml:"health_check,omitempty" json:"health_check,omitempty"`
+	Outputs        []Output     `yaml:"outputs,omitempty" json:"outputs,omitempty"`
 }
 
 // HealthCheck determines readiness/success for a stage.

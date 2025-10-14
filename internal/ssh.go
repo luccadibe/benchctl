@@ -150,7 +150,7 @@ func connect(host Host) (*ssh.Client, error) {
 	return client, nil
 }
 
-// Scp copies a file from the remote host to the local host. Uses external dep.
+// Scp copies a file from the remote host to the local host.
 func (c *sshClient) Scp(ctx context.Context, remotePath string, localPath string) error {
 	client, err := scp.NewClientBySSH(c.client)
 	if err != nil {
@@ -166,6 +166,25 @@ func (c *sshClient) Scp(ctx context.Context, remotePath string, localPath string
 	err = client.CopyFromRemote(ctx, file, remotePath)
 	if err != nil {
 		return errors.New("error copying file: " + err.Error())
+	}
+	return nil
+}
+
+// Upload copies a local file to the remote host
+func (c *sshClient) Upload(ctx context.Context, localPath, remotePath string) error {
+	client, err := scp.NewClientBySSH(c.client)
+	if err != nil {
+		return errors.New("error creating scp client: " + err.Error())
+	}
+	file, err := os.Open(localPath)
+	if err != nil {
+		return errors.New("error opening local file: " + err.Error())
+	}
+	defer file.Close()
+	// Mode 0755 for scripts
+	err = client.CopyFile(ctx, file, remotePath, "0755")
+	if err != nil {
+		return errors.New("error uploading file: " + err.Error())
 	}
 	return nil
 }

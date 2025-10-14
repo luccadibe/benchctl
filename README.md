@@ -25,6 +25,7 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **Visualization**: Auto-generated plots (time series, histograms, boxplots)
 - **Metadata Tracking**: Custom metadata support for benchmark runs
 - **Result Management**: Organized storage with run IDs and comprehensive metadata
+- **Append Metadata from Stages**: Stages can emit JSON on stdout and append it to run metadata automatically
 
 ## Installation
 
@@ -94,7 +95,7 @@ plots:
 
 2. **Run Benchmark**:
 ```bash
-benchctl --config benchmark.yaml
+benchctl run --config benchmark.yaml
 ```
 
 3. **View Results**:
@@ -196,14 +197,57 @@ plots:
 
 ```bash
 # Run benchmark
-benchctl --config benchmark.yaml
+benchctl run --config benchmark.yaml
 
 # Add custom metadata
-benchctl --config benchmark.yaml --metadata "branch"="main" --metadata "commit"="abc123"
+benchctl run --config benchmark.yaml --metadata "someFeature"="true" --metadata "someOtherFeature"="false"
 
 # View help
 benchctl --help
 ```
+
+### Metadata
+
+Append JSON metadata directly from a stage by enabling `append_metadata`.
+
+In your configuration, add a stage that prints a single JSON object to stdout:
+
+```yaml
+stages:
+  - name: analyse
+    host: local
+    command: |
+      uv run python - <<'PY'
+      # /// script
+      # requires-python = ">=3.10"
+      # dependencies = []
+      # ///
+      import json
+      # Compute something and print a single JSON object
+      print(json.dumps({
+          "latency_p50_ms": "123.4",
+          "notes": "baseline run"
+      }))
+      PY
+    append_metadata: true
+```
+
+At runtime, the JSON keys/values are stringified and merged into the run’s metadata under `custom`.
+This is helpful to annotate runs with additional metadata that is dependent on the stage's output.
+It can be used to enable easy comparison of runs, for example to compare performance statistics.
+You can run your data-analysis script and append the metadata to the run.
+
+## Stage Environment Variables
+
+During stage execution, the following environment variables are exported for commands/scripts:
+
+- `BENCHCTL_RUN_ID`: the current run ID
+- `BENCHCTL_RUN_DIR`: absolute path to the run directory (e.g., ./results/1)
+- `BENCHCTL_OUTPUT_DIR`: benchmark output root (from `benchmark.output_dir`)
+- `BENCHCTL_CONFIG_PATH`: set if provided in the environment when invoking benchctl
+- `BENCHCTL_BIN`: absolute path to the running benchctl binary
+
+Use these to locate inputs/outputs or to parameterize your scripts.
 
 ## Examples
 

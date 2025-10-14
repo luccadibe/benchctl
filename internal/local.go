@@ -51,6 +51,16 @@ func (c *localClient) Scp(ctx context.Context, remotePath, localPath string) err
 	return cmd.Run()
 }
 
+// Upload copies a file locally (local to local)
+func (c *localClient) Upload(ctx context.Context, localPath, remotePath string) error {
+	dir := filepath.Dir(remotePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "cp", localPath, remotePath)
+	return cmd.Run()
+}
+
 // Close closes the local client (no-op for local execution)
 func (c *localClient) Close() error {
 	// Nothing to close for local execution

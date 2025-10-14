@@ -1,0 +1,20 @@
+benchmark:
+  name: remote-script-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  test-host:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: upload-and-run-script
+    host: test-host
+    script: ./testdata/scripts/remote_echo.sh
+    outputs:
+      - name: remote_created
+        remote_path: /tmp/benchctl-remote-script.txt
+        local_path: /tmp/benchctl-test-remote-script.txt
+

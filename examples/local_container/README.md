@@ -35,12 +35,13 @@ The load generator script (`load_generator.sh`) provides:
 
 ## Benchmark Stages
 
-The benchmark configuration includes four stages:
+The benchmark configuration includes five stages:
 
 1. **build-docker-image** - Builds the Docker image for the server
 2. **start-container** - Starts the containerized server with health checks
 3. **run-load-test** - Executes the load generator and collects CSV data
 4. **cleanup-container** - Stops and removes the container
+5. **analyse_csv** - Runs a Python script via `uv` that prints JSON to stdout; the stage has `append_metadata: true` so the JSON is merged into the run's metadata automatically
 
 ## Data Schema
 
@@ -74,3 +75,16 @@ just example-local-container
 # Clean up when done
 just example-local-container-clean
 ```
+
+## Metadata Appending from Stages
+
+This example demonstrates metadata appending:
+
+- Set `append_metadata: true` on a stage.
+- Ensure the command/script writes a single JSON object to stdout (keys/values will be stringified and appended to metadata under `custom`).
+- The environment variables available to commands/scripts are:
+  - `BENCHCTL_RUN_ID`: current run id
+  - `BENCHCTL_RUN_DIR`: absolute run directory
+  - `BENCHCTL_OUTPUT_DIR`: benchmark output root
+  - `BENCHCTL_CONFIG_PATH`: if set in the environment when invoking benchctl
+  - `BENCHCTL_BIN`: path to the running benchctl binary

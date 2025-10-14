@@ -4,6 +4,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,4 +152,52 @@ func TestWorkflowCommandWithSpecialCharacters(t *testing.T) {
 	internal.RunWorkflow(context.Background(), cfg, customMetadata)
 
 	// should not panic
+}
+
+func TestWorkflowRemoteScriptExecution(t *testing.T) {
+	setupTest(t)
+	defer teardownTest(t)
+
+	cfg := loadWorkflowConfig(t, "remote_script.yaml")
+	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+
+	// Verify file created by the remote script was copied locally
+	localCollected := "/tmp/benchctl-test-remote-script.txt"
+	if _, err := os.Stat(localCollected); os.IsNotExist(err) {
+		t.Fatalf("expected remote-script collected file to exist: %s", localCollected)
+	}
+	data, err := os.ReadFile(localCollected)
+	if err != nil {
+		t.Fatalf("failed reading collected remote-script file: %v", err)
+	}
+	if !strings.Contains(string(data), "remote-script-ok") {
+		t.Errorf("expected collected file to contain marker; got: %s", string(data))
+	}
+}
+
+func TestWorkflowAppendMetadata(t *testing.T) {
+	setupTest(t)
+	defer teardownTest(t)
+
+	cfg := loadWorkflowConfig(t, "append_metadata.yaml")
+	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+
+	// Inspect metadata.json under the first run directory
+	mdPath := filepath.Join(testOutputDir, "1", "metadata.json")
+	b, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatalf("failed to read metadata.json: %v", err)
+	}
+	var md internal.RunMetadata
+	if err := json.Unmarshal(b, &md); err != nil {
+		t.Fatalf("failed to unmarshal metadata.json: %v", err)
+	}
+	got := md.Custom
+	// Expect keys emitted by the append_metadata stage (stringified values)
+	if got["am_key"] != "am_value" {
+		t.Errorf("expected custom.am_key=am_value, got %q", got["am_key"])
+	}
+	if got["am_num"] != "42" {
+		t.Errorf("expected custom.am_num=\"42\", got %q", got["am_num"])
+	}
 }

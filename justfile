@@ -39,6 +39,9 @@ example-local-container-clean:
 example-local-container-inspect run-id:
     @echo "Inspecting local container example..."
     cd examples/local_container && ../../benchctl --config benchmark.yaml inspect {{run-id}}
+example-local-container-edit run-id *FLAGS:
+    @echo "Editing local container example..."
+    cd examples/local_container && ../../benchctl --config benchmark.yaml edit {{run-id}} {{FLAGS}}
 
 tag version:
     git tag -a v{{version}} -m "Release {{version}}"

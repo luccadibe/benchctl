@@ -33,6 +33,12 @@ var verboseFlag = &cli.BoolFlag{
 	Aliases: []string{"v"},
 }
 
+var metadataFlag = &cli.StringSliceFlag{
+	Name:    "metadata",
+	Usage:   "Custom metadata in the format 'key=value' (can be used multiple times)",
+	Aliases: []string{"m"},
+}
+
 func main() {
 
 	cmd := &cli.Command{
@@ -49,12 +55,15 @@ func main() {
 				Usage: "Run a benchmark",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfgFile := cmd.String(configFlag.Name)
+					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
+						cfgFile = env
+					}
 					cfg, err := parseConfig(cfgFile)
 					if err != nil {
 						return err
 					}
 
-					md := cmd.StringSlice("metadata")
+					md := cmd.StringSlice(metadataFlag.Name)
 					customMetadata, err := parseMetadata(md)
 					if err != nil {
 						return err
@@ -75,11 +84,7 @@ func main() {
 					return nil
 				},
 				Flags: []cli.Flag{
-					&cli.StringSliceFlag{
-						Name:    "metadata",
-						Usage:   "Custom metadata in the format 'key=value' (can be used multiple times)",
-						Aliases: []string{"m"},
-					},
+					metadataFlag,
 					timeoutFlag,
 				},
 			},
@@ -117,6 +122,9 @@ func main() {
 				Usage: "Inspect a benchmark run",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfgFile := cmd.String(configFlag.Name)
+					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
+						cfgFile = env
+					}
 					cfg, err := parseConfig(cfgFile)
 					if err != nil {
 						return err
@@ -133,8 +141,40 @@ func main() {
 					configFlag,
 				},
 			},
-			// add-metadata
-			//TODO
+			// edit
+			{
+				Name:  "edit",
+				Usage: "Edit a benchmark run's metadata",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					cfgFile := cmd.String(configFlag.Name)
+					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
+						cfgFile = env
+					}
+					cfg, err := parseConfig(cfgFile)
+					if err != nil {
+						return err
+					}
+					runId := cmd.Args().Get(0)
+					if runId == "" {
+						return fmt.Errorf("run-id is required")
+					}
+					runPath := filepath.Join(cfg.Benchmark.OutputDir, runId)
+					md := cmd.StringSlice(metadataFlag.Name)
+					extraMd, err := parseMetadata(md)
+					if err != nil {
+						return err
+					}
+					err = internal.AddMetadata(runPath, extraMd)
+					if err != nil {
+						return err
+					}
+					fmt.Println("Metadata edited successfully")
+					return nil
+				},
+				Flags: []cli.Flag{
+					metadataFlag,
+				},
+			},
 		},
 	}
 

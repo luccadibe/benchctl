@@ -15,7 +15,11 @@ import (
 type ExecutionClient interface {
 	RunCommand(ctx context.Context, command string) (string, int, error)
 	CheckPort(ctx context.Context, port string, timeout time.Duration) (bool, error)
+	// Scp copies a file from the remote host to the local host
 	Scp(ctx context.Context, remotePath, localPath string) error
+	// Upload copies a local file to the remote host (or locally when host is local)
+	Upload(ctx context.Context, localPath, remotePath string) error
+	// Close closes the execution client, for example an SSH connection
 	Close() error
 }
 
@@ -44,6 +48,7 @@ func generateRunID(outputDir string) (string, error) {
 }
 
 // RunWorkflow executes a benchmark workflow with run ID tracking
+
 func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]string) {
 	// Generate run ID and create run directory
 	runID, err := generateRunID(cfg.Benchmark.OutputDir)
@@ -56,7 +61,6 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 		log.Fatalf("Failed to create run directory: %v", err)
 	}
 
-	// Create metadata
 	metadata := &RunMetadata{
 		RunID:         runID,
 		BenchmarkName: cfg.Benchmark.Name,
@@ -93,21 +97,72 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 			}
 		}
 
+		// prepare env exports for this stage
+		envPrefix := buildEnvPrefix(runID, runDir, cfg)
+
+		var lastOutput string
 		if stage.Command != "" {
-			r, ec, err := c.RunCommand(ctx, stage.Command)
+			r, ec, err := c.RunCommand(ctx, envPrefix+stage.Command)
 			logger.Printf("Stage %s output: %s", stage.Name, r)
 			if err != nil {
 				logger.Fatalf("Stage %s failed: %v (exit code: %d)", stage.Name, err, ec)
 			}
+			lastOutput = r
 		} else if stage.Script != "" {
-			command := fmt.Sprintf("bash ./%s", stage.Script)
-			r, ec, err := c.RunCommand(ctx, command)
+			// If remote host, upload the script first, then execute it
+			command := ""
+			if host.IP == "" {
+				// Local execution, run relative path as before
+				command = fmt.Sprintf("bash ./%s", stage.Script)
+			} else {
+				// Remote host: copy script to a temp path and execute there
+				localScriptPath := stage.Script
+				if !filepath.IsAbs(localScriptPath) {
+					abs, err := filepath.Abs(localScriptPath)
+					if err == nil {
+						localScriptPath = abs
+					}
+				}
+				remoteScriptPath := filepath.Join("/tmp", fmt.Sprintf("benchctl-%s-%s", runID, filepath.Base(localScriptPath)))
+				if err := c.Upload(ctx, localScriptPath, remoteScriptPath); err != nil {
+					logger.Fatalf("failed to upload script for stage %s: %v", stage.Name, err)
+				}
+				// ensure executable and run
+				command = fmt.Sprintf("chmod +x '%s' && bash '%s'", remoteScriptPath, remoteScriptPath)
+			}
+			r, ec, err := c.RunCommand(ctx, envPrefix+command)
 			logger.Printf("Stage %s output: %s", stage.Name, r)
 			if err != nil {
 				logger.Fatalf("Stage %s failed: %v (exit code: %d)", stage.Name, err, ec)
 			}
+			lastOutput = r
 		} else {
 			logger.Fatalf("stage %s has no command or script", stage.Name)
+		}
+
+		// If append_metadata is true, parse stdout as JSON and append into metadata.Custom
+		if stage.AppendMetadata {
+			var out map[string]any
+			dec := json.NewDecoder(strings.NewReader(lastOutput))
+			dec.UseNumber()
+			if err := dec.Decode(&out); err != nil {
+				logger.Fatalf("Stage %s append_metadata enabled but output is not valid JSON: %v", stage.Name, err)
+			}
+			if metadata.Custom == nil {
+				metadata.Custom = map[string]string{}
+			}
+			for k, v := range out {
+				// Stringify values to store in Custom map[string]string
+				switch t := v.(type) {
+				case json.Number:
+					metadata.Custom[k] = t.String()
+				case string:
+					metadata.Custom[k] = t
+				default:
+					b, _ := json.Marshal(t)
+					metadata.Custom[k] = string(b)
+				}
+			}
 		}
 
 		// if stage has a health check run it (use CallWithRetry)
@@ -169,7 +224,6 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 			}
 		}
 
-		// Close the client
 		c.Close()
 	}
 
@@ -272,15 +326,9 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 		}
 	}
 
-	// Save metadata
 	metadata.EndTime = time.Now()
-	metadataPath := filepath.Join(runDir, "metadata.json")
-	metadataBytes, err := json.MarshalIndent(metadata, "", "  ")
-	if err != nil {
-		logger.Fatalf("Failed to marshal metadata: %v", err)
-	}
-	if err := os.WriteFile(metadataPath, metadataBytes, 0644); err != nil {
-		logger.Fatalf("Failed to save metadata: %v", err)
+	if err := saveMetadata(metadata, runDir); err != nil {
+		logger.Fatalf("%s", err)
 	}
 
 	logger.Printf("Workflow completed successfully!")
@@ -302,4 +350,42 @@ func createLogger(cfg *Config) *log.Logger {
 	}
 	//default
 	return log.New(os.Stdout, "", log.LstdFlags)
+}
+
+// saveMetadata saves the metadata to a file
+func saveMetadata(metadata *RunMetadata, runDir string) error {
+	metadataPath := filepath.Join(runDir, "metadata.json")
+	metadataBytes, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(metadataPath, metadataBytes, 0644); err != nil {
+		return fmt.Errorf("failed to save metadata: %v", err)
+	}
+	return nil
+}
+
+const (
+	EnvRunID      = "BENCHCTL_RUN_ID"
+	EnvOutputDir  = "BENCHCTL_OUTPUT_DIR"
+	EnvRunDir     = "BENCHCTL_RUN_DIR"
+	EnvConfigPath = "BENCHCTL_CONFIG_PATH"
+	EnvBenchctl   = "BENCHCTL_BIN"
+)
+
+func buildEnvPrefix(runID, runDir string, cfg *Config) string {
+	configPath := os.Getenv(EnvConfigPath)
+	exePath, _ := os.Executable()
+	exports := []string{
+		EnvRunID + "='" + runID + "'",
+		EnvOutputDir + "='" + cfg.Benchmark.OutputDir + "'",
+		EnvRunDir + "='" + runDir + "'",
+	}
+	if strings.TrimSpace(configPath) != "" {
+		exports = append(exports, EnvConfigPath+"='"+configPath+"'")
+	}
+	if strings.TrimSpace(exePath) != "" {
+		exports = append(exports, EnvBenchctl+"='"+exePath+"'")
+	}
+	return "export " + strings.Join(exports, " ") + "; "
 }

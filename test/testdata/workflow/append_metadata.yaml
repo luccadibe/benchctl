@@ -1,0 +1,14 @@
+benchmark:
+  name: append-metadata-test
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  local: {}
+
+stages:
+  - name: emit-json
+    host: local
+    command: |
+      echo '{"am_key":"am_value","am_num":42}'
+    append_metadata: true
+
