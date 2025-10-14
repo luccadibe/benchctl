@@ -27,14 +27,15 @@ stages:
         local_path: ./results/run-001/data.csv
         data_schema:
           format: csv
-          timestamp:
-            type: timestamp
-            unit: ns
-          latency_ms:
-            type: float
-            unit: ms
-          status:
-            type: string
+          columns:
+            - name: timestamp
+              type: timestamp
+              unit: ns
+            - name: latency_ms
+              type: float
+              unit: ms
+            - name: status
+              type: string
 
 plots:
   - name: latency_over_time

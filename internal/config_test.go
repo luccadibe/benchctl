@@ -115,12 +115,13 @@ stages:
         remote_path: /tmp/data.csv
         data_schema:
           format: csv
-          timestamp:
-            type: timestamp
-            unit: s
-            format: unix
-          value:
-            type: float
+          columns:
+            - name: timestamp
+              type: timestamp
+              unit: s
+              format: unix
+            - name: value
+              type: float
 `
 	cfg, err := ParseYAML([]byte(yaml))
 	if err != nil {
@@ -129,12 +130,22 @@ stages:
 	if len(cfg.Stages) == 0 || len(cfg.Stages[0].Outputs) == 0 || cfg.Stages[0].Outputs[0].DataSchema == nil {
 		t.Fatalf("expected stage/output/schema to be present")
 	}
-	col, ok := cfg.Stages[0].Outputs[0].DataSchema.Columns["timestamp"]
-	if !ok {
+	cols := cfg.Stages[0].Outputs[0].DataSchema.Columns
+	if len(cols) == 0 {
+		t.Fatalf("expected columns in data_schema")
+	}
+	var timestampCol *DataColumn
+	for i := range cols {
+		if cols[i].Name == "timestamp" {
+			timestampCol = &cols[i]
+			break
+		}
+	}
+	if timestampCol == nil {
 		t.Fatalf("expected timestamp column in data_schema")
 	}
-	if strings.ToLower(col.Format) != "unix" {
-		t.Fatalf("expected timestamp format 'unix', got %q", col.Format)
+	if strings.ToLower(timestampCol.Format) != "unix" {
+		t.Fatalf("expected timestamp format 'unix', got %q", timestampCol.Format)
 	}
 }
 
@@ -155,18 +166,19 @@ stages:
         remote_path: /tmp/data.csv
         data_schema:
           format: csv
-          timestamp:
-            type: timestamp
-            unit: s
-            format: not_a_real_format
-          value:
-            type: float
+          columns:
+            - name: timestamp
+              type: timestamp
+              unit: s
+              format: not_a_real_format
+            - name: value
+              type: float
 `
 	_, err := ParseYAML([]byte(yaml))
 	if err == nil {
 		t.Fatalf("expected error for invalid timestamp format")
 	}
-	if !strings.Contains(err.Error(), "data_schema.timestamp.format must be one of") {
+	if !strings.Contains(err.Error(), "data_schema.columns[0].format must be one of") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

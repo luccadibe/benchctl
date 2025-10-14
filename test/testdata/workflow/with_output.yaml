@@ -19,6 +19,7 @@ stages:
         local_path: /tmp/benchctl-test-collected.txt
         data_schema:
           format: csv
-          timestamp:
-            type: timestamp
+          columns:
+            - name: timestamp
+              type: timestamp
 

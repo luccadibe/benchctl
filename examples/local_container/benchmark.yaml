@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/luccadibe/benchctl/main/cmd/schema/schema.json
 benchmark:
   name: local-container-example
   output_dir: ./results
@@ -40,17 +41,18 @@ stages:
         local_path: ./results/load_test_results.csv
         data_schema:
           format: csv
-          timestamp:
-            type: timestamp
-            unit: s
-          latency_ms:
-            type: float
-            unit: ms
-          status:
-            type: string
-          response_time_ms:
-            type: float
-            unit: ms
+          columns:
+            - name: timestamp
+              type: timestamp
+              unit: s
+            - name: latency_ms
+              type: float
+              unit: ms
+            - name: status
+              type: string
+            - name: response_time_ms
+              type: float
+              unit: ms
 
   - name: cleanup-container
     host: local

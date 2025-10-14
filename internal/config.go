@@ -46,53 +46,19 @@ type LoggingConfig struct {
 	Path  string `yaml:"path,omitempty" json:"path,omitempty"`
 }
 
-// DataSchema supports a fixed field (format) and inline column definitions.
+// DataSchema defines the schema for structured data outputs (e.g., CSV files).
 type DataSchema struct {
-	Format  string                `yaml:"format" json:"format" jsonschema:"enum=csv"`
-	Columns map[string]DataColumn `json:"columns"`
+	Format  string       `yaml:"format" json:"format" jsonschema:"enum=csv"`
+	Columns []DataColumn `yaml:"columns" json:"columns"`
 }
 
-// DataColumn represents a single column definition.
+// DataColumn represents a single column definition with a name.
 type DataColumn struct {
+	Name string   `yaml:"name" json:"name"`
 	Type DataType `yaml:"type" json:"type" jsonschema:"enum=timestamp,enum=integer,enum=float,enum=string"`
 	Unit string   `yaml:"unit,omitempty" json:"unit,omitempty"`
 	// Format is only applicable for timestamp type. Supported: unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601
 	Format string `yaml:"format,omitempty" json:"format,omitempty"`
-}
-
-// UnmarshalYAML supports a mixed mapping of a fixed field (format) and arbitrary column keys.
-func (ds *DataSchema) UnmarshalYAML(unmarshal func(any) error) error {
-	var raw map[string]any
-	if err := unmarshal(&raw); err != nil {
-		return err
-	}
-	ds.Columns = map[string]DataColumn{}
-	for k, v := range raw {
-		if k == "format" {
-			s, ok := v.(string)
-			if !ok {
-				return fmt.Errorf("data_schema.format must be a string")
-			}
-			if s != "csv" {
-				return fmt.Errorf("data_schema.format must be csv")
-			}
-			ds.Format = s
-			continue
-		}
-		b, err := yaml.Marshal(v)
-		if err != nil {
-			return fmt.Errorf("data_schema.%s: %w", k, err)
-		}
-		var col DataColumn
-		if err := yaml.Unmarshal(b, &col); err != nil {
-			return fmt.Errorf("data_schema.%s: %w", k, err)
-		}
-		if ds.Columns == nil {
-			ds.Columns = map[string]DataColumn{}
-		}
-		ds.Columns[k] = col
-	}
-	return nil
 }
 
 // Host is a host in the benchmark. It can be a remote host or the local host.
@@ -234,13 +200,16 @@ func validateConfig(cfg *Config) error {
 				if strings.TrimSpace(output.DataSchema.Format) == "" {
 					errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.format must be set", i, j))
 				}
-				// Validate column types
-				for colName, col := range output.DataSchema.Columns {
+				// Validate columns
+				for k, col := range output.DataSchema.Columns {
+					if strings.TrimSpace(col.Name) == "" {
+						errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.columns[%d].name must be set", i, j, k))
+					}
 					switch col.Type {
 					case DataTypeInteger, DataTypeFloat, DataTypeString, DataTypeTimestamp:
 						// ok
 					default:
-						errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.%s.type must be one of [timestamp, integer, float, string]", i, j, colName))
+						errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.columns[%d].type must be one of [timestamp, integer, float, string]", i, j, k))
 					}
 					_ = col.Unit // unit is optional
 					// If timestamp with format, validate allowed formats
@@ -249,7 +218,7 @@ func validateConfig(cfg *Config) error {
 						case "unix", "unix_ms", "unix_us", "unix_ns", "rfc3339", "rfc3339_nano", "iso8601":
 							// ok
 						default:
-							errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.%s.format must be one of [unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601]", i, j, colName))
+							errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.columns[%d].format must be one of [unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601]", i, j, k))
 						}
 					}
 				}

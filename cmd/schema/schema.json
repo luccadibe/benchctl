@@ -56,6 +56,9 @@
         },
         "DataColumn": {
             "properties": {
+                "name": {
+                    "type": "string"
+                },
                 "type": {
                     "type": "string",
                     "enum": [
@@ -75,6 +78,7 @@
             "additionalProperties": false,
             "type": "object",
             "required": [
+                "name",
                 "type"
             ]
         },
@@ -87,10 +91,10 @@
                     ]
                 },
                 "columns": {
-                    "additionalProperties": {
+                    "items": {
                         "$ref": "#/$defs/DataColumn"
                     },
-                    "type": "object"
+                    "type": "array"
                 }
             },
             "additionalProperties": false,

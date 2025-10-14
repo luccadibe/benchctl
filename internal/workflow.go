@@ -215,9 +215,9 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 
 				// Warn if timestamp columns lack explicit format
 				if output.DataSchema != nil {
-					for colName, col := range output.DataSchema.Columns {
+					for _, col := range output.DataSchema.Columns {
 						if col.Type == DataTypeTimestamp && strings.TrimSpace(col.Format) == "" {
-							logger.Printf("WARNING: data_schema.%s has type=timestamp without format; falling back to auto-detection which may be slower/ambiguous", colName)
+							logger.Printf("WARNING: data_schema.%s has type=timestamp without format; falling back to auto-detection which may be slower/ambiguous", col.Name)
 						}
 					}
 				}
@@ -297,8 +297,9 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 			plotToRender := plot
 			if plot.Engine == "" || plot.Engine == "seaborn" {
 				if matchedOutput != nil && matchedOutput.DataSchema != nil {
-					if col, ok := matchedOutput.DataSchema.Columns[plot.X]; ok {
-						if col.Type == DataTypeTimestamp {
+					// Find the column matching plot.X
+					for _, col := range matchedOutput.DataSchema.Columns {
+						if col.Name == plot.X && col.Type == DataTypeTimestamp {
 							if plotToRender.Options == nil {
 								plotToRender.Options = map[string]any{}
 							}
@@ -308,6 +309,7 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 							if strings.TrimSpace(col.Unit) != "" {
 								plotToRender.Options["x_time_unit"] = strings.ToLower(col.Unit)
 							}
+							break
 						}
 					}
 				}

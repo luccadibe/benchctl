@@ -74,13 +74,14 @@ stages:
         remote_path: /tmp/results.csv
         data_schema:
           format: csv
-          timestamp:
-            type: timestamp
-            unit: s
-            format: unix
-          latency_ms:
-            type: float
-            unit: ms
+          columns:
+            - name: timestamp
+              type: timestamp
+              unit: s
+              format: unix
+            - name: latency_ms
+              type: float
+              unit: ms
 
 plots:
   - name: latency-over-time
@@ -168,15 +169,16 @@ Define CSV column types for validation and plotting:
 ```yaml
 data_schema:
   format: csv
-  timestamp:
-    type: timestamp
-    unit: s
-    format: unix   # optional; supported: unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601
-  latency_ms:
-    type: float
-    unit: ms
-  status:
-    type: string
+  columns:
+    - name: timestamp
+      type: timestamp
+      unit: s
+      format: unix   # optional; supported: unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601
+    - name: latency_ms
+      type: float
+      unit: ms
+    - name: status
+      type: string
 ```
 
 ### Plots
