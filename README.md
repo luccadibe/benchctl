@@ -29,7 +29,14 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 
 ## Installation
 
-TODO
+### Using Arch Linux
+
+```bash
+yay -S benchctl-bin
+```
+
+### Any other OS
+Go to the [releases](https://github.com/luccadibe/benchctl/releases) page and download the latestbinary for your OS.
 
 ## Quick Start
 
