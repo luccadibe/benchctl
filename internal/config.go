@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	_ "embed"
+
 	"github.com/goccy/go-yaml"
 )
 
@@ -313,3 +315,10 @@ func validateConfig(cfg *Config) error {
 	}
 	return nil
 }
+
+func GetDefaultConfigFile() string {
+	return string(defaultConfigFile)
+}
+
+//go:embed default_benchmark.yaml
+var defaultConfigFile []byte

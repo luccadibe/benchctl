@@ -64,7 +64,7 @@ func TestWorkflowSimple(t *testing.T) {
 
 	// Run workflow - this will use log.Fatal on error, so we can't capture it easily
 	// For now, we just ensure it doesn't panic
-	internal.RunWorkflow(cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata)
 
 	// Should not panic
 }
@@ -74,7 +74,7 @@ func TestWorkflowMultiStage(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "multi_stage.yaml")
-	internal.RunWorkflow(cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata)
 
 	// Should not panic
 }
@@ -92,7 +92,7 @@ func TestWorkflowWithHealthCheck(t *testing.T) {
 	// Start workflow in goroutine since it might take time
 	done := make(chan bool)
 	go func() {
-		internal.RunWorkflow(cfg, customMetadata)
+		internal.RunWorkflow(context.Background(), cfg, customMetadata)
 		done <- true
 	}()
 
@@ -127,7 +127,7 @@ func TestWorkflowWithOutput(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "with_output.yaml")
-	internal.RunWorkflow(cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata)
 
 	// Verify file was actually copied
 	if _, err := os.Stat("/tmp/benchctl-test-collected.txt"); os.IsNotExist(err) {
@@ -148,7 +148,7 @@ func TestWorkflowCommandWithSpecialCharacters(t *testing.T) {
 	setupTest(t)
 	defer teardownTest(t)
 	cfg := loadWorkflowConfig(t, "special_chars.yaml")
-	internal.RunWorkflow(cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata)
 
 	// should not panic
 }

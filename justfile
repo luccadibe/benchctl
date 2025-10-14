@@ -28,7 +28,7 @@ test:
 # Example commands
 example-local-container:
     @echo "Running local container example..."
-    cd examples/local_container && ../../benchctl --config benchmark.yaml
+    cd examples/local_container && ../../benchctl --config benchmark.yaml run
 
 example-local-container-clean:
     @echo "Cleaning up local container example..."
@@ -36,6 +36,10 @@ example-local-container-clean:
     cd examples/local_container && docker rm local-container-server 2>/dev/null || true
     cd examples/local_container && docker rmi local-container-server:latest 2>/dev/null || true
     cd examples/local_container && rm -rf results/
+
+tag version:
+    git tag -a v{{version}} -m "Release {{version}}"
+    git push origin v{{version}}
 
 release:
     goreleaser release

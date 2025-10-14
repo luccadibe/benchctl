@@ -44,10 +44,7 @@ func generateRunID(outputDir string) (string, error) {
 }
 
 // RunWorkflow executes a benchmark workflow with run ID tracking
-func RunWorkflow(cfg *Config, customMetadata map[string]string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
+func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]string) {
 	// Generate run ID and create run directory
 	runID, err := generateRunID(cfg.Benchmark.OutputDir)
 	if err != nil {
