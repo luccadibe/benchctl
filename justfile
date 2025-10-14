@@ -1,3 +1,5 @@
+set dotenv-load := true
+
 default:
     @just --list
 
@@ -34,3 +36,6 @@ example-local-container-clean:
     cd examples/local_container && docker rm local-container-server 2>/dev/null || true
     cd examples/local_container && docker rmi local-container-server:latest 2>/dev/null || true
     cd examples/local_container && rm -rf results/
+
+release:
+    goreleaser release

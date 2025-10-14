@@ -7,3 +7,7 @@ test/testdata/ssh/authorized_keys
 benchctl
 
 design.md
+# Added by goreleaser init:
+dist/
+
+.env

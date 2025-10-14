@@ -1,11 +1,12 @@
 package main
 
 import (
-	"benchctl/internal"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/luccadibe/benchctl/internal"
 )
 
 func main() {

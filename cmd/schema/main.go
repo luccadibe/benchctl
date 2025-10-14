@@ -1,7 +1,7 @@
 package main
 
 import (
-	"benchctl/internal"
+	"github.com/luccadibe/benchctl/internal"
 
 	"github.com/invopop/jsonschema"
 )
