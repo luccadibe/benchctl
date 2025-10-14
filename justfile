@@ -7,7 +7,7 @@ build:
     go build -o benchctl ./cmd/benchctl
 
 schema:
-    go run ./cmd/schema
+    go run ./cmd/schema 2> cmd/schema/schema.json
 
 compose-up:
     docker compose -f ./test/compose.yaml up -d

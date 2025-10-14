@@ -265,6 +265,9 @@
                 "script": {
                     "type": "string"
                 },
+                "append_metadata": {
+                    "type": "boolean"
+                },
                 "health_check": {
                     "$ref": "#/$defs/HealthCheck"
                 },
