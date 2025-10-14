@@ -304,7 +304,7 @@ func createBoxPlot(p *gonumplot.Plot, data *CSVData, plot Plot) error {
 	return nil
 }
 
-//go:embed seaborn/seaborn_runner.py
+//go:embed files/seaborn_runner.py
 var seabornScript []byte
 
 type seabornSpec struct {
@@ -331,7 +331,7 @@ func (s *SeabornPlotter) GeneratePlot(ctx context.Context, plot Plot, dataPath, 
 	uv := s.UVPath
 	if uv == "" {
 		uv = "uv"
-	} // rely on PATH; optionally auto-install to ~/.benchctl/bin
+	} // rely on PATH;
 	spec := seabornSpec{
 		Type: plot.Type, Title: plot.Title, X: plot.X, Y: plot.Y,
 		Format: coalesce(plot.Format, "png"), Opts: plot.Options,

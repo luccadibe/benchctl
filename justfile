@@ -28,7 +28,7 @@ test:
 # Example commands
 example-local-container:
     @echo "Running local container example..."
-    cd examples/local_container && ../../benchctl --config benchmark.yaml run
+    cd examples/local_container && ../../benchctl --config benchmark.yaml run --metadata "branch"="main" --metadata "commit"="example-run"
 
 example-local-container-clean:
     @echo "Cleaning up local container example..."
@@ -36,6 +36,9 @@ example-local-container-clean:
     cd examples/local_container && docker rm local-container-server 2>/dev/null || true
     cd examples/local_container && docker rmi local-container-server:latest 2>/dev/null || true
     cd examples/local_container && rm -rf results/
+example-local-container-inspect run-id:
+    @echo "Inspecting local container example..."
+    cd examples/local_container && ../../benchctl --config benchmark.yaml inspect {{run-id}}
 
 tag version:
     git tag -a v{{version}} -m "Release {{version}}"

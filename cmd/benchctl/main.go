@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/luccadibe/benchctl/internal"
@@ -24,6 +26,13 @@ var timeoutFlag = &cli.DurationFlag{
 	Aliases: []string{"t"},
 }
 
+var verboseFlag = &cli.BoolFlag{
+	Name:    "verbose",
+	Usage:   "verbose output",
+	Value:   false,
+	Aliases: []string{"v"},
+}
+
 func main() {
 
 	cmd := &cli.Command{
@@ -31,8 +40,10 @@ func main() {
 		Usage: "Manage benchmark workflows",
 		Flags: []cli.Flag{
 			configFlag,
+			verboseFlag,
 		},
 		Commands: []*cli.Command{
+			// run
 			{
 				Name:  "run",
 				Usage: "Run a benchmark",
@@ -72,6 +83,7 @@ func main() {
 					timeoutFlag,
 				},
 			},
+			// init
 			{
 				Name:  "init",
 				Usage: "Initialize your benchmark configuration file",
@@ -99,6 +111,30 @@ func main() {
 					},
 				},
 			},
+			// inspect
+			{
+				Name:  "inspect",
+				Usage: "Inspect a benchmark run",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					cfgFile := cmd.String(configFlag.Name)
+					cfg, err := parseConfig(cfgFile)
+					if err != nil {
+						return err
+					}
+					runId := cmd.Args().Get(0)
+					if runId == "" {
+						return fmt.Errorf("run-id is required")
+					}
+					runPath := filepath.Join(cfg.Benchmark.OutputDir, runId)
+					fmt.Println(internal.InspectRun(runPath, cmd.Bool(verboseFlag.Name)))
+					return nil
+				},
+				Flags: []cli.Flag{
+					configFlag,
+				},
+			},
+			// add-metadata
+			//TODO
 		},
 	}
 

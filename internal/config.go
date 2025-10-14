@@ -320,5 +320,5 @@ func GetDefaultConfigFile() string {
 	return string(defaultConfigFile)
 }
 
-//go:embed default_benchmark.yaml
+//go:embed files/default_benchmark.yaml
 var defaultConfigFile []byte
