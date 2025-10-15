@@ -11,6 +11,8 @@ And consistently, I lost a lot of time in plumbing work:
 - Copying files over different filesystems
 - Running commands everywhere
 - Plotting data 
+- Remembering which results belong to certain parameters used for the benchmark runs
+- Managing metadata
 
 So I decided to write a framework that would take care of all of this for me.
 It ended up turning into a specialized "workflow engine" of sorts.
@@ -23,8 +25,8 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **Health Checks**: Built-in readiness detection (port, HTTP, file, process, command)
 - **Data Collection**: Automatic file collection via SCP with schema validation
 - **Visualization**: Auto-generated plots (time series, histograms, boxplots)
-- **Metadata Tracking**: Custom metadata support for benchmark runs
-- **Result Management**: Organized storage with run IDs and comprehensive metadata
+- **Metadata Tracking**: Custom metadata support for benchmark runs.
+- **Result Management**: Organized storage with run IDs and comprehensive metadata, so you always know exactly which parameters and configuration was used for a specific benchmark run.
 - **Append Metadata from Stages**: Stages can emit JSON on stdout and append it to run metadata automatically
 - **Live Command Streaming**: Stage commands stream directly to your terminal with preserved ANSI colors locally and over SSH
 
