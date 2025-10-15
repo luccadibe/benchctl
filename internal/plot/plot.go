@@ -1,4 +1,4 @@
-package internal
+package plot
 
 import (
 	"context"
@@ -19,6 +19,21 @@ import (
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
 )
+
+// Plot holds all relevant information to plot a data source.
+type Plot struct {
+	Name        string         `yaml:"name" json:"name"`
+	Title       string         `yaml:"title" json:"title"`
+	Source      string         `yaml:"source" json:"source"` // Reference to output name
+	Type        string         `yaml:"type" json:"type" jsonschema:"enum=time_series,enum=histogram,enum=boxplot"`
+	X           string         `yaml:"x,omitempty" json:"x,omitempty"`
+	Y           string         `yaml:"y,omitempty" json:"y,omitempty"`
+	Aggregation string         `yaml:"aggregation,omitempty" json:"aggregation,omitempty" jsonschema:"enum=avg,enum=median,enum=p95,enum=p99"`
+	Format      string         `yaml:"format,omitempty" json:"format,omitempty" jsonschema:"enum=png,enum=svg,enum=pdf"`
+	ExportPath  string         `yaml:"export_path,omitempty" json:"export_path,omitempty"`
+	Engine      string         `yaml:"engine,omitempty" json:"engine,omitempty" jsonschema:"enum=gonum,enum=seaborn"` // default seaborn
+	Options     map[string]any `yaml:"options,omitempty" json:"options,omitempty"`
+}
 
 type Plotter interface {
 	GeneratePlot(ctx context.Context, plot Plot, dataPath, exportPath string) error

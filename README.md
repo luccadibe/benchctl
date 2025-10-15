@@ -26,6 +26,7 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **Metadata Tracking**: Custom metadata support for benchmark runs
 - **Result Management**: Organized storage with run IDs and comprehensive metadata
 - **Append Metadata from Stages**: Stages can emit JSON on stdout and append it to run metadata automatically
+- **Live Command Streaming**: Stage commands stream directly to your terminal with preserved ANSI colors locally and over SSH
 
 ## Installation
 
@@ -281,4 +282,3 @@ See the [`examples/`](examples/) directory for complete benchmark configurations
 ## License
 
 MIT
-

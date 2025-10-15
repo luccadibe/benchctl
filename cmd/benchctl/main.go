@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/luccadibe/benchctl/internal"
+	"github.com/luccadibe/benchctl/internal/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -95,7 +96,7 @@ func main() {
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := cmd.String("name")
 					file := cmd.String("file")
-					cfg := internal.GetDefaultConfigFile()
+					cfg := config.GetDefaultConfigFile()
 					cfg = strings.Replace(cfg, "my-benchmark", name, 1)
 					err := os.WriteFile(file, []byte(cfg), 0644)
 					if err != nil {
@@ -219,14 +220,14 @@ func main() {
 	}
 }
 
-func parseConfig(cfgFile string) (*internal.Config, error) {
+func parseConfig(cfgFile string) (*config.Config, error) {
 	data, err := os.ReadFile(cfgFile)
 	if err != nil {
 		return nil, err
 
 	}
 
-	cfg, err := internal.ParseYAML(data)
+	cfg, err := config.ParseYAML(data)
 	if err != nil {
 		return nil, errors.New("Error parsing configuration file: " + err.Error())
 	}

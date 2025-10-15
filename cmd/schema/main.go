@@ -1,13 +1,12 @@
 package main
 
 import (
-	"github.com/luccadibe/benchctl/internal"
-
 	"github.com/invopop/jsonschema"
+	"github.com/luccadibe/benchctl/internal/config"
 )
 
 func main() {
-	schema := jsonschema.Reflect(&internal.Config{})
+	schema := jsonschema.Reflect(&config.Config{})
 	json, err := schema.MarshalJSON()
 	if err != nil {
 		panic(err)

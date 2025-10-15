@@ -1,6 +1,6 @@
 //go:build unit
 
-package internal
+package config
 
 import (
 	"os"

@@ -4,11 +4,13 @@ go 1.25.1
 
 require (
 	github.com/bramvdbogaerde/go-scp v1.5.0
+	github.com/creack/pty v1.1.24
 	github.com/goccy/go-yaml v1.18.0
 	github.com/goforj/godump v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/urfave/cli/v3 v3.4.1
 	golang.org/x/crypto v0.42.0
+	golang.org/x/term v0.35.0
 	gonum.org/v1/plot v0.16.0
 )
 

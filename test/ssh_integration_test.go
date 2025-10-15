@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luccadibe/benchctl/internal"
+	"github.com/luccadibe/benchctl/internal/config"
+	"github.com/luccadibe/benchctl/internal/execution"
 )
 
 const (
@@ -23,7 +24,7 @@ const (
 	commandTimeout = 10 * time.Second
 )
 
-var hosts = []internal.Host{
+var hosts = []config.Host{
 	{
 		IP:       testHost1,
 		Port:     testPort1,
@@ -41,7 +42,7 @@ var hosts = []internal.Host{
 func TestSSHClientConnection(t *testing.T) {
 	host := hosts[0]
 
-	client, err := internal.NewSSHClient(host)
+	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create SSH client: %v", err)
 	}
@@ -56,7 +57,7 @@ func TestSSHClientConnectionWithInvalidKey(t *testing.T) {
 	host := hosts[0]
 	host.KeyFile = "./testdata/ssh/nonexistent_key"
 
-	_, err := internal.NewSSHClient(host)
+	_, err := execution.NewSSHClient(host)
 	if err == nil {
 		t.Fatal("expected error for invalid key file, got nil")
 	}
@@ -69,7 +70,7 @@ func TestSSHClientConnectionWithInvalidKey(t *testing.T) {
 func TestSSHClientRunCommand(t *testing.T) {
 	host := hosts[0]
 
-	client, err := internal.NewSSHClient(host)
+	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create SSH client: %v", err)
 	}
@@ -78,21 +79,21 @@ func TestSSHClientRunCommand(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
 
-	output, _, err := client.RunCommand(ctx, "echo 'hello world'")
+	res, err := client.RunCommand(ctx, execution.CommandRequest{Command: "echo 'hello world'"})
 	if err != nil {
 		t.Fatalf("failed to run command: %v", err)
 	}
 
 	expected := "hello world"
-	if !strings.Contains(output, expected) {
-		t.Errorf("expected output to contain %q, got %q", expected, output)
+	if !strings.Contains(res.Output, expected) {
+		t.Errorf("expected output to contain %q, got %q", expected, res.Output)
 	}
 }
 
 func TestSSHClientRunMultipleCommands(t *testing.T) {
 	host := hosts[0]
 
-	client, err := internal.NewSSHClient(host)
+	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create SSH client: %v", err)
 	}
@@ -130,13 +131,13 @@ func TestSSHClientRunMultipleCommands(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 			defer cancel()
 
-			output, _, err := client.RunCommand(ctx, tt.command)
+			res, err := client.RunCommand(ctx, execution.CommandRequest{Command: tt.command})
 			if err != nil {
 				t.Fatalf("failed to run command %q: %v", tt.command, err)
 			}
 
-			if tt.contains != "" && !strings.Contains(output, tt.contains) {
-				t.Errorf("expected output to contain %q, got %q", tt.contains, output)
+			if tt.contains != "" && !strings.Contains(res.Output, tt.contains) {
+				t.Errorf("expected output to contain %q, got %q", tt.contains, res.Output)
 			}
 		})
 	}
@@ -145,7 +146,7 @@ func TestSSHClientRunMultipleCommands(t *testing.T) {
 func TestSSHClientContextCancellation(t *testing.T) {
 	host := hosts[0]
 
-	client, err := internal.NewSSHClient(host)
+	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create SSH client: %v", err)
 	}
@@ -155,7 +156,7 @@ func TestSSHClientContextCancellation(t *testing.T) {
 	defer cancel()
 
 	// Run a long-running command that will be cancelled
-	_, _, err = client.RunCommand(ctx, "sleep 10")
+	_, err = client.RunCommand(ctx, execution.CommandRequest{Command: "sleep 10"})
 	if err == nil {
 		t.Fatal("expected error for cancelled context, got nil")
 	}
@@ -170,7 +171,7 @@ func TestSSHClientMultipleHosts(t *testing.T) {
 
 	for i, host := range hosts {
 		t.Run(host.IP, func(t *testing.T) {
-			client, err := internal.NewSSHClient(host)
+			client, err := execution.NewSSHClient(host)
 			if err != nil {
 				t.Fatalf("failed to create SSH client for host %d: %v", i+1, err)
 			}
@@ -179,13 +180,13 @@ func TestSSHClientMultipleHosts(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 			defer cancel()
 
-			output, _, err := client.RunCommand(ctx, "whoami")
+			res, err := client.RunCommand(ctx, execution.CommandRequest{Command: "whoami"})
 			if err != nil {
 				t.Fatalf("failed to run command on host %d: %v", i+1, err)
 			}
 
-			if !strings.Contains(output, testUsername) {
-				t.Errorf("expected output to contain %q, got %q", testUsername, output)
+			if !strings.Contains(res.Output, testUsername) {
+				t.Errorf("expected output to contain %q, got %q", testUsername, res.Output)
 			}
 		})
 	}
@@ -194,7 +195,7 @@ func TestSSHClientMultipleHosts(t *testing.T) {
 func TestSSHClientCommandWithStderr(t *testing.T) {
 	host := hosts[0]
 
-	client, err := internal.NewSSHClient(host)
+	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create SSH client: %v", err)
 	}
@@ -204,20 +205,20 @@ func TestSSHClientCommandWithStderr(t *testing.T) {
 	defer cancel()
 
 	// Command that writes to stderr
-	output, _, err := client.RunCommand(ctx, "echo 'error message' >&2")
+	res, err := client.RunCommand(ctx, execution.CommandRequest{Command: "echo 'error message' >&2"})
 	if err != nil {
 		t.Fatalf("failed to run command: %v", err)
 	}
 
-	if !strings.Contains(output, "error message") {
-		t.Errorf("expected output to contain stderr message, got %q", output)
+	if !strings.Contains(res.Output, "error message") {
+		t.Errorf("expected output to contain stderr message, got %q", res.Output)
 	}
 }
 
 func TestSSHClientCommandFailure(t *testing.T) {
 	host := hosts[0]
 
-	client, err := internal.NewSSHClient(host)
+	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create SSH client: %v", err)
 	}
@@ -227,7 +228,7 @@ func TestSSHClientCommandFailure(t *testing.T) {
 	defer cancel()
 
 	// Command that exits with non-zero status
-	_, _, err = client.RunCommand(ctx, "exit 1")
+	_, err = client.RunCommand(ctx, execution.CommandRequest{Command: "exit 1"})
 	if err == nil {
 		t.Fatal("expected error for failed command, got nil")
 	}
@@ -237,7 +238,7 @@ func TestSSHClientCloseAndReconnect(t *testing.T) {
 	host := hosts[0]
 
 	// First connection
-	client1, err := internal.NewSSHClient(host)
+	client1, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create first SSH client: %v", err)
 	}
@@ -245,13 +246,13 @@ func TestSSHClientCloseAndReconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
 
-	output1, _, err := client1.RunCommand(ctx, "echo 'first'")
+	res1, err := client1.RunCommand(ctx, execution.CommandRequest{Command: "echo 'first'"})
 	if err != nil {
 		t.Fatalf("failed to run command on first client: %v", err)
 	}
 
-	if !strings.Contains(output1, "first") {
-		t.Errorf("unexpected output from first client: %q", output1)
+	if !strings.Contains(res1.Output, "first") {
+		t.Errorf("unexpected output from first client: %q", res1.Output)
 	}
 
 	// Close first connection
@@ -260,7 +261,7 @@ func TestSSHClientCloseAndReconnect(t *testing.T) {
 	}
 
 	// Second connection
-	client2, err := internal.NewSSHClient(host)
+	client2, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create second SSH client: %v", err)
 	}
@@ -269,12 +270,12 @@ func TestSSHClientCloseAndReconnect(t *testing.T) {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel2()
 
-	output2, _, err := client2.RunCommand(ctx2, "echo 'second'")
+	res2, err := client2.RunCommand(ctx2, execution.CommandRequest{Command: "echo 'second'"})
 	if err != nil {
 		t.Fatalf("failed to run command on second client: %v", err)
 	}
 
-	if !strings.Contains(output2, "second") {
-		t.Errorf("unexpected output from second client: %q", output2)
+	if !strings.Contains(res2.Output, "second") {
+		t.Errorf("unexpected output from second client: %q", res2.Output)
 	}
 }

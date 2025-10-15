@@ -4,34 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-)
 
-// ExecutionClient defines the interface for executing commands on hosts
-type ExecutionClient interface {
-	RunCommand(ctx context.Context, command string) (string, int, error)
-	CheckPort(ctx context.Context, port string, timeout time.Duration) (bool, error)
-	// Scp copies a file from the remote host to the local host
-	Scp(ctx context.Context, remotePath, localPath string) error
-	// Upload copies a local file to the remote host (or locally when host is local)
-	Upload(ctx context.Context, localPath, remotePath string) error
-	// Close closes the execution client, for example an SSH connection
-	Close() error
-}
+	"github.com/luccadibe/benchctl/internal/config"
+	"github.com/luccadibe/benchctl/internal/execution"
+	"github.com/luccadibe/benchctl/internal/plot"
+	"golang.org/x/term"
+)
 
 // RunMetadata holds metadata about a benchmark run
 type RunMetadata struct {
-	RunID         string            `json:"run_id"`
-	BenchmarkName string            `json:"benchmark_name"`
-	StartTime     time.Time         `json:"start_time"`
-	EndTime       time.Time         `json:"end_time"`
-	Config        *Config           `json:"config"`
-	Hosts         map[string]Host   `json:"hosts"`
-	Custom        map[string]string `json:"custom,omitempty"`
+	RunID         string                 `json:"run_id"`
+	BenchmarkName string                 `json:"benchmark_name"`
+	StartTime     time.Time              `json:"start_time"`
+	EndTime       time.Time              `json:"end_time"`
+	Config        *config.Config         `json:"config"`
+	Hosts         map[string]config.Host `json:"hosts"`
+	Custom        map[string]string      `json:"custom,omitempty"`
 }
 
 // generateRunID creates a unique run ID as a simple increasing counter
@@ -48,8 +42,7 @@ func generateRunID(outputDir string) (string, error) {
 }
 
 // RunWorkflow executes a benchmark workflow with run ID tracking
-
-func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]string) {
+func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[string]string) {
 	// Generate run ID and create run directory
 	runID, err := generateRunID(cfg.Benchmark.OutputDir)
 	if err != nil {
@@ -70,7 +63,8 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 		Custom:        customMetadata,
 	}
 
-	logger := createLogger(cfg)
+	logger, logWriter, closeLogger := createLogger(cfg)
+	defer closeLogger()
 	logger.Printf("Run ID: %s", runID)
 	logger.Printf("Results will be saved to: %s", runDir)
 
@@ -83,15 +77,15 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 		}
 
 		// Determine if this is a local host (no IP specified) or remote host
-		var c ExecutionClient
+		var c execution.ExecutionClient
 		var err error
 
 		if host.IP == "" {
 			// Local execution
-			c = NewLocalClient()
+			c = execution.NewLocalClient()
 		} else {
 			// Remote execution via SSH
-			c, err = NewSSHClient(host)
+			c, err = execution.NewSSHClient(host)
 			if err != nil {
 				logger.Fatalf("error creating ssh client: %v", err)
 			}
@@ -100,14 +94,16 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 		// prepare env exports for this stage
 		envPrefix := buildEnvPrefix(runID, runDir, cfg)
 
+		consoleSink := resolveConsoleWriter()
+		stdoutSink := consoleSink
+		stderrSink := consoleSink
+		usePTY := consoleSink != nil
+		logStageOutput := consoleSink == nil || !writersReferToSameFD(consoleSink, logWriter)
+
 		var lastOutput string
+		var commandToRun string
 		if stage.Command != "" {
-			r, ec, err := c.RunCommand(ctx, envPrefix+stage.Command)
-			logger.Printf("Stage %s output: %s", stage.Name, r)
-			if err != nil {
-				logger.Fatalf("Stage %s failed: %v (exit code: %d)", stage.Name, err, ec)
-			}
-			lastOutput = r
+			commandToRun = envPrefix + stage.Command
 		} else if stage.Script != "" {
 			// If remote host, upload the script first, then execute it
 			command := ""
@@ -130,15 +126,28 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 				// ensure executable and run
 				command = fmt.Sprintf("chmod +x '%s' && bash '%s'", remoteScriptPath, remoteScriptPath)
 			}
-			r, ec, err := c.RunCommand(ctx, envPrefix+command)
-			logger.Printf("Stage %s output: %s", stage.Name, r)
-			if err != nil {
-				logger.Fatalf("Stage %s failed: %v (exit code: %d)", stage.Name, err, ec)
-			}
-			lastOutput = r
+			commandToRun = envPrefix + command
 		} else {
 			logger.Fatalf("stage %s has no command or script", stage.Name)
 		}
+
+		result, err := c.RunCommand(ctx, execution.CommandRequest{
+			Command: commandToRun,
+			Stdout:  stdoutSink,
+			Stderr:  stderrSink,
+			UsePTY:  usePTY,
+		})
+		if err != nil {
+			if logStageOutput && strings.TrimSpace(result.Output) != "" {
+				logger.Printf("Stage %s captured output:\n%s", stage.Name, result.Output)
+			}
+			logger.Fatalf("Stage %s failed: %v (exit code: %d)", stage.Name, err, result.ExitCode)
+		}
+		lastOutput = result.Output
+		if logStageOutput {
+			logger.Printf("Stage %s output: %s", stage.Name, result.Output)
+		}
+		logger.Printf("Stage %s completed (exit code: %d)", stage.Name, result.ExitCode)
 
 		// If append_metadata is true, parse stdout as JSON and append into metadata.Custom
 		if stage.AppendMetadata {
@@ -216,7 +225,7 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 				// Warn if timestamp columns lack explicit format
 				if output.DataSchema != nil {
 					for _, col := range output.DataSchema.Columns {
-						if col.Type == DataTypeTimestamp && strings.TrimSpace(col.Format) == "" {
+						if col.Type == config.DataTypeTimestamp && strings.TrimSpace(col.Format) == "" {
 							logger.Printf("WARNING: data_schema.%s has type=timestamp without format; falling back to auto-detection which may be slower/ambiguous", col.Name)
 						}
 					}
@@ -234,16 +243,16 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 			logger.Fatalf("Failed to create plots directory: %v", err)
 		}
 
-		for _, plot := range cfg.Plots {
-			logger.Printf("Generating plot: %s", plot.Name)
+		for _, plt := range cfg.Plots {
+			logger.Printf("Generating plot: %s", plt.Name)
 			var dataSourcePath string
-			var matchedOutput *Output
+			var matchedOutput *config.Output
 			for _, stage := range cfg.Stages {
 				if stage.Outputs == nil {
 					continue
 				}
 				for _, output := range stage.Outputs {
-					if output.Name == plot.Source {
+					if output.Name == plt.Source {
 						// Use the actual collected path
 						if output.LocalPath == "" {
 							dataSourcePath = filepath.Join(runDir, output.Name+".csv")
@@ -260,19 +269,19 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 			}
 
 			if dataSourcePath == "" {
-				logger.Fatalf("plot %s references unknown output %s", plot.Name, plot.Source)
+				logger.Fatalf("plot %s references unknown output %s", plt.Name, plt.Source)
 			}
 
 			// Resolve export path: use config if provided, else default under run plots dir
 			var plotExportPath string
-			if plot.ExportPath != "" {
-				if filepath.IsAbs(plot.ExportPath) {
-					plotExportPath = plot.ExportPath
+			if plt.ExportPath != "" {
+				if filepath.IsAbs(plt.ExportPath) {
+					plotExportPath = plt.ExportPath
 				} else {
-					plotExportPath = filepath.Join(runDir, plot.ExportPath)
+					plotExportPath = filepath.Join(runDir, plt.ExportPath)
 				}
 			} else {
-				plotExportPath = filepath.Join(plotsDir, plot.Name+".png")
+				plotExportPath = filepath.Join(plotsDir, plt.Name+".png")
 			}
 
 			// Ensure export directory exists
@@ -292,14 +301,14 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 			}
 
 			// Generate the plot
-			var plotter Plotter
-			// Attach timestamp hint from data_schema (if available) for seaborn engine
-			plotToRender := plot
-			if plot.Engine == "" || plot.Engine == "seaborn" {
+			var plotter plot.Plotter
+			// Attach timestamp from data_schema (if available) for seaborn engine
+			plotToRender := plt
+			if plt.Engine == "" || plt.Engine == "seaborn" {
 				if matchedOutput != nil && matchedOutput.DataSchema != nil {
 					// Find the column matching plot.X
 					for _, col := range matchedOutput.DataSchema.Columns {
-						if col.Name == plot.X && col.Type == DataTypeTimestamp {
+						if col.Name == plt.X && col.Type == config.DataTypeTimestamp {
 							if plotToRender.Options == nil {
 								plotToRender.Options = map[string]any{}
 							}
@@ -314,16 +323,16 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 					}
 				}
 			}
-			switch plot.Engine {
+			switch plt.Engine {
 			case "", "seaborn":
-				plotter = NewSeabornPlotter()
+				plotter = plot.NewSeabornPlotter()
 			case "gonum":
-				plotter = NewGonumPlotter()
+				plotter = plot.NewGonumPlotter()
 			default:
-				logger.Fatalf("unknown plot engine: %s", plot.Engine)
+				logger.Fatalf("unknown plot engine: %s", plt.Engine)
 			}
 			if err := plotter.GeneratePlot(ctx, plotToRender, dataSourcePath, plotExportPath); err != nil {
-				logger.Fatalf("failed to generate plot %s: %v", plot.Name, err)
+				logger.Fatalf("failed to generate plot %s: %v", plt.Name, err)
 			}
 		}
 	}
@@ -337,21 +346,21 @@ func RunWorkflow(ctx context.Context, cfg *Config, customMetadata map[string]str
 	logger.Printf("Results saved to: %s", runDir)
 }
 
-// createLogger creates a logger based on the logging configuration.
-func createLogger(cfg *Config) *log.Logger {
+// createLogger creates a logger based on the logging configuration and returns a logger, a writer, and a function to close the writer.
+func createLogger(cfg *config.Config) (*log.Logger, io.Writer, func()) {
 	if cfg.Benchmark.Logging != nil {
 		if cfg.Benchmark.Logging.Path != "" {
 			file, err := os.Create(cfg.Benchmark.Logging.Path)
 			if err != nil {
 				log.Fatalf("error creating log file: %v", err)
 			}
-			defer file.Close()
-			return log.New(file, "", log.LstdFlags)
+			return log.New(file, "", log.LstdFlags), file, func() {
+				_ = file.Close()
+			}
 		}
-		return log.New(os.Stdout, "", log.LstdFlags)
 	}
-	//default
-	return log.New(os.Stdout, "", log.LstdFlags)
+	stdout := os.Stdout
+	return log.New(stdout, "", log.LstdFlags), stdout, func() {}
 }
 
 // saveMetadata saves the metadata to a file
@@ -367,6 +376,24 @@ func saveMetadata(metadata *RunMetadata, runDir string) error {
 	return nil
 }
 
+// resolveConsoleWriter returns the console writer based on the terminal status of stdout
+func resolveConsoleWriter() io.Writer {
+	if os.Stdout != nil && term.IsTerminal(int(os.Stdout.Fd())) {
+		return os.Stdout
+	}
+	return nil
+}
+
+// writersReferToSameFD checks if two writers refer to the same file descriptor
+func writersReferToSameFD(a, b io.Writer) bool {
+	fa, okA := a.(*os.File)
+	fb, okB := b.(*os.File)
+	if okA && okB {
+		return fa.Fd() == fb.Fd()
+	}
+	return false
+}
+
 const (
 	EnvRunID      = "BENCHCTL_RUN_ID"
 	EnvOutputDir  = "BENCHCTL_OUTPUT_DIR"
@@ -375,7 +402,7 @@ const (
 	EnvBenchctl   = "BENCHCTL_BIN"
 )
 
-func buildEnvPrefix(runID, runDir string, cfg *Config) string {
+func buildEnvPrefix(runID, runDir string, cfg *config.Config) string {
 	configPath := os.Getenv(EnvConfigPath)
 	exePath, _ := os.Executable()
 	exports := []string{

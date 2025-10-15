@@ -1,4 +1,4 @@
-package internal
+package config
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 	_ "embed"
 
 	"github.com/goccy/go-yaml"
+	"github.com/luccadibe/benchctl/internal/plot"
 )
 
 // DataType represents allowed CSV column data types in configuration.
@@ -27,7 +28,7 @@ type Config struct {
 	Benchmark Benchmark       `yaml:"benchmark" json:"benchmark"`
 	Hosts     map[string]Host `yaml:"hosts" json:"hosts"`
 	Stages    []Stage         `yaml:"stages" json:"stages"`
-	Plots     []Plot          `yaml:"plots,omitempty" json:"plots,omitempty"`
+	Plots     []plot.Plot     `yaml:"plots,omitempty" json:"plots,omitempty"`
 }
 
 // Benchmark holds top-level benchmark metadata.
@@ -100,21 +101,6 @@ type Output struct {
 	// If not provided, saved under the run's output directory
 	LocalPath  string      `yaml:"local_path,omitempty" json:"local_path,omitempty"`
 	DataSchema *DataSchema `yaml:"data_schema,omitempty" json:"data_schema,omitempty"`
-}
-
-// Plot is a future feature for visualization configuration.
-type Plot struct {
-	Name        string         `yaml:"name" json:"name"`
-	Title       string         `yaml:"title" json:"title"`
-	Source      string         `yaml:"source" json:"source"` // Reference to output name
-	Type        string         `yaml:"type" json:"type" jsonschema:"enum=time_series,enum=histogram,enum=boxplot"`
-	X           string         `yaml:"x,omitempty" json:"x,omitempty"`
-	Y           string         `yaml:"y,omitempty" json:"y,omitempty"`
-	Aggregation string         `yaml:"aggregation,omitempty" json:"aggregation,omitempty" jsonschema:"enum=avg,enum=median,enum=p95,enum=p99"`
-	Format      string         `yaml:"format,omitempty" json:"format,omitempty" jsonschema:"enum=png,enum=svg,enum=pdf"`
-	ExportPath  string         `yaml:"export_path,omitempty" json:"export_path,omitempty"`
-	Engine      string         `yaml:"engine,omitempty" json:"engine,omitempty" jsonschema:"enum=gonum,enum=seaborn"` // default seaborn
-	Options     map[string]any `yaml:"options,omitempty" json:"options,omitempty"`
 }
 
 // ParseYAML loads and validates configuration using strict decoding.

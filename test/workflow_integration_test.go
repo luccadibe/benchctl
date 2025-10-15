@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/luccadibe/benchctl/internal"
+	"github.com/luccadibe/benchctl/internal/config"
+	"github.com/luccadibe/benchctl/internal/execution"
 )
 
 const (
@@ -41,7 +43,7 @@ func teardownTest(t *testing.T) {
 	os.RemoveAll("/tmp/benchctl-test-collected.txt")
 }
 
-func loadWorkflowConfig(t *testing.T, filename string) *internal.Config {
+func loadWorkflowConfig(t *testing.T, filename string) *config.Config {
 	t.Helper()
 	path := filepath.Join(workflowTestDir, filename)
 	data, err := os.ReadFile(path)
@@ -49,7 +51,7 @@ func loadWorkflowConfig(t *testing.T, filename string) *internal.Config {
 		t.Fatalf("failed to read workflow config %s: %v", filename, err)
 	}
 
-	cfg, err := internal.ParseYAML(data)
+	cfg, err := config.ParseYAML(data)
 	if err != nil {
 		t.Fatalf("failed to parse workflow config %s: %v", filename, err)
 	}
@@ -106,20 +108,20 @@ func TestWorkflowWithHealthCheck(t *testing.T) {
 	}
 
 	// Clean up: kill the nc process
-	host := internal.Host{
+	host := config.Host{
 		IP:       "localhost",
 		Port:     2222,
 		Username: "testuser",
 		KeyFile:  "./testdata/ssh/test_key",
 	}
-	client, err := internal.NewSSHClient(host)
+	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Logf("warning: failed to create cleanup client: %v", err)
 	} else {
 		defer client.Close()
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		client.RunCommand(cleanupCtx, "pkill -f 'nc -l -p 8080' || true")
+		_, _ = client.RunCommand(cleanupCtx, execution.CommandRequest{Command: "pkill -f 'nc -l -p 8080' || true"})
 	}
 }
 
