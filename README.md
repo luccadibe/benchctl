@@ -231,7 +231,7 @@ benchctl compare <run-id1> <run-id2>
 
 Append JSON metadata directly from a stage by enabling `append_metadata`.
 
-In your configuration, add a stage that prints a single JSON object to stdout:
+In your configuration, you can add a stage that outputs a  some metadata in JSON format to stdout:
 
 ```yaml
 stages:
