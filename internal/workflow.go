@@ -155,22 +155,25 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 			dec := json.NewDecoder(strings.NewReader(lastOutput))
 			dec.UseNumber()
 			if err := dec.Decode(&out); err != nil {
-				logger.Fatalf("Stage %s append_metadata enabled but output is not valid JSON: %v", stage.Name, err)
-			}
-			if metadata.Custom == nil {
-				metadata.Custom = map[string]string{}
-			}
-			for k, v := range out {
-				// Stringify values to store in Custom map[string]string
-				switch t := v.(type) {
-				case json.Number:
-					metadata.Custom[k] = t.String()
-				case string:
-					metadata.Custom[k] = t
-				default:
-					b, _ := json.Marshal(t)
-					metadata.Custom[k] = string(b)
+				logger.Printf("WARNING: Stage %s append_metadata enabled but output is not valid JSON: %v", stage.Name, err)
+				logger.Printf("Stage %s output was: %s", stage.Name, lastOutput)
+			} else {
+				if metadata.Custom == nil {
+					metadata.Custom = map[string]string{}
 				}
+				for k, v := range out {
+					// Stringify values to store in Custom map[string]string
+					switch t := v.(type) {
+					case json.Number:
+						metadata.Custom[k] = t.String()
+					case string:
+						metadata.Custom[k] = t
+					default:
+						b, _ := json.Marshal(t)
+						metadata.Custom[k] = string(b)
+					}
+				}
+				logger.Printf("Stage %s metadata appended successfully", stage.Name)
 			}
 		}
 
