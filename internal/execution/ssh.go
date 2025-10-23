@@ -21,6 +21,13 @@ const (
 	DEFAULT_SSH_PORT = 22
 )
 
+// ExpandTilde expands ~ to the user's home directory using $HOME
+func ExpandTilde(path string) string {
+	// Replace ~ with $HOME
+	expanded := strings.Replace(path, "~", "$HOME", 1)
+	return os.ExpandEnv(expanded)
+}
+
 // all things SSH here
 
 type sshClient struct {
@@ -232,7 +239,10 @@ func (c *sshClient) CheckPort(ctx context.Context, port string, timeout time.Dur
 func connect(host config.Host) (*ssh.Client, error) {
 	var key ssh.Signer
 	var err error
-	keyFile, err := os.ReadFile(host.KeyFile)
+
+	expandedKeyFile := ExpandTilde(host.KeyFile)
+
+	keyFile, err := os.ReadFile(expandedKeyFile)
 	if err != nil {
 		return nil, err
 	}
