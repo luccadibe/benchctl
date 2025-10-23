@@ -33,14 +33,27 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 
 ## Installation
 
+### Quick Install (Linux/macOS)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/luccadibe/benchctl/main/install-benchctl.sh | bash
+```
+
+Or download and run manually:
+```bash
+wget https://raw.githubusercontent.com/luccadibe/benchctl/main/install-benchctl.sh
+chmod +x install-benchctl.sh
+./install-benchctl.sh
+```
+
 ### Using Arch Linux
 
 ```bash
 yay -S benchctl-bin
 ```
 
-### Any other OS
-Go to the [releases](https://github.com/luccadibe/benchctl/releases) page and download the latestbinary for your OS.
+### Manual Installation
+Go to the [releases](https://github.com/luccadibe/benchctl/releases) page and download the latest binary for your OS.
 
 ## Quick Start
 
