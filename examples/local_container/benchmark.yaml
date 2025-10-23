@@ -32,6 +32,36 @@ stages:
       timeout: 30s
       retries: 10
 
+  - name: resource-monitor
+    host: local
+    command: ./scripts/resource_monitor.sh /tmp/resource_monitor.csv
+    background: true
+    outputs:
+      - name: resource_monitor
+        remote_path: /tmp/resource_monitor.csv
+        local_path: ./results/resource_monitor.csv
+        data_schema:
+          format: csv
+          columns:
+            - name: timestamp_ms
+              type: timestamp
+              unit: ms
+              format: unix_ms
+            - name: cpu_used_raw
+              type: integer
+            - name: cpu_total_raw
+              type: integer
+            - name: cpu_percent
+              type: integer
+            - name: mem_used_bytes
+              type: integer
+              unit: bytes
+            - name: mem_total_bytes
+              type: integer
+              unit: bytes
+            - name: mem_percent
+              type: integer
+
   - name: run-load-test
     host: local
     script: load_generator.sh
@@ -108,4 +138,20 @@ plots:
     engine: seaborn
     options:
       style: whitegrid
-      bins: 30
+
+  - name: resource_cpu_time
+    title: CPU Utilization During Benchmark
+    source: resource_monitor
+    type: time_series
+    x: timestamp_ms
+    y: cpu_percent
+    format: png
+    export_path: ./plots/resource_cpu_time.png
+    engine: seaborn
+    options:
+      style: whitegrid
+      x_timestamp_format: medium
+      x_label_angle: 45
+      dpi: 150
+      width_px: 1200
+      height_px: 400

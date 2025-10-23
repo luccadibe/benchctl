@@ -156,6 +156,10 @@ func validateConfig(cfg *Config) error {
 			errs = append(errs, "exactly one of command or script must be set")
 		}
 
+		if st.Background && st.AppendMetadata {
+			errs = append(errs, fmt.Sprintf("stages[%d] with background=true cannot set append_metadata", i))
+		}
+
 		// health check validation
 		if st.HealthCheck != nil {
 			hc := st.HealthCheck

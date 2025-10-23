@@ -24,6 +24,7 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **YAML Configuration**: Declarative workflow definition with hosts, stages, and plots
 - **Health Checks**: Built-in readiness detection (port, HTTP, file, process, command)
 - **Data Collection**: Automatic file collection via SCP with schema validation
+- **Background Stages**: Keep monitoring commands running alongside your benchmark until all your non-background stages finish
 - **Visualization**: Auto-generated plots (time series, histograms, boxplots)
 - **Metadata Tracking**: Custom metadata support for benchmark runs.
 - **Result Management**: Organized storage with run IDs and comprehensive metadata, so you always know exactly which parameters and configuration was used for a specific benchmark run.
@@ -150,13 +151,18 @@ stages:
   - name: build
     host: local
     command: make build
-    
+
   - name: deploy
     host: remote
     script: deploy.sh
     health_check:
       type: http
       target: "http://localhost:8080/health"
+
+  - name: monitor-resources
+    host: local
+    command: ./scripts/monitor.sh
+    background: true  # keeps running until the workflow shuts it down safely
     
   - name: load-test
     host: local
@@ -165,6 +171,10 @@ stages:
       - name: metrics
         remote_path: /tmp/metrics.csv
 ```
+
+Background stages run alongside the rest of the workflow. benchctl keeps them alive until the final non-background stage finishes, then sends SIGTERM, waits `BackgroundTerminationGrace` (2 seconds by default), and finally SIGKILL if they are still running. 
+Their outputs are collected after shutdown, so its ideal for monitoring tasks, like resource usage monitoring.
+Background stages cannot use `append_metadata`.
 
 ### Data Schema
 Define CSV column types for validation and plotting:

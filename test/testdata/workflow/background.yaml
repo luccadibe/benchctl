@@ -1,0 +1,40 @@
+benchmark:
+  name: background-integration
+  output_dir: /tmp/benchctl-test-output
+
+hosts:
+  remote1:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+
+stages:
+  - name: start-monitor
+    host: remote1
+    # this path can be confusing but its relative to the integration test dir
+    script: ./testdata/workflow/scripts/background_monitor.sh
+    background: true
+    outputs:
+      - name: monitor
+        remote_path: /tmp/benchctl-bg.csv
+        local_path: monitor.csv
+        data_schema:
+          format: csv
+          columns:
+            - name: timestamp
+              type: timestamp
+              format: unix
+              unit: s
+            - name: counter
+              type: integer
+
+  - name: workload
+    host: remote1
+    command: |
+      sleep 1
+      echo "workload finished" > /tmp/benchctl-work.txt
+    outputs:
+      - name: workload
+        remote_path: /tmp/benchctl-work.txt
+        local_path: workload.txt

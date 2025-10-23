@@ -68,276 +68,22 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	logger.Printf("Run ID: %s", runID)
 	logger.Printf("Results will be saved to: %s", runDir)
 
-	// go through the stages and execute them
-	for i, stage := range cfg.Stages {
-		logger.Printf("Executing stage: %d/%d %s", i+1, len(cfg.Stages), stage.Name)
-		host, ok := cfg.Hosts[stage.Host]
-		if !ok {
-			logger.Fatalf("stage %s references unknown host %s", stage.Name, stage.Host)
+	backgroundMgr := newBackgroundManager(logger)
+
+	stageErr := executeStages(ctx, cfg, runID, runDir, logger, logWriter, metadata, backgroundMgr)
+	stopErr := backgroundMgr.StopAll(ctx, runDir)
+	if stageErr != nil {
+		if stopErr != nil {
+			logger.Printf("ERROR stopping background stages: %v", stopErr)
 		}
-
-		// Determine if this is a local host (no IP specified) or remote host
-		var c execution.ExecutionClient
-		var err error
-
-		if host.IP == "" {
-			// Local execution
-			c = execution.NewLocalClient()
-		} else {
-			// Remote execution via SSH
-			c, err = execution.NewSSHClient(host)
-			if err != nil {
-				logger.Fatalf("error creating ssh client: %v", err)
-			}
-		}
-
-		// prepare env exports for this stage
-		envPrefix := buildEnvPrefix(runID, runDir, cfg)
-
-		consoleSink := resolveConsoleWriter()
-		stdoutSink := consoleSink
-		stderrSink := consoleSink
-		usePTY := consoleSink != nil
-		logStageOutput := consoleSink == nil || !writersReferToSameFD(consoleSink, logWriter)
-
-		var lastOutput string
-		var commandToRun string
-		if stage.Command != "" {
-			commandToRun = envPrefix + stage.Command
-		} else if stage.Script != "" {
-			// If remote host, upload the script first, then execute it
-			command := ""
-			if host.IP == "" {
-				// Local execution, run relative path as before
-				command = fmt.Sprintf("bash ./%s", stage.Script)
-			} else {
-				// Remote host: copy script to a temp path and execute there
-				localScriptPath := stage.Script
-				if !filepath.IsAbs(localScriptPath) {
-					abs, err := filepath.Abs(localScriptPath)
-					if err == nil {
-						localScriptPath = abs
-					}
-				}
-				remoteScriptPath := filepath.Join("/tmp", fmt.Sprintf("benchctl-%s-%s", runID, filepath.Base(localScriptPath)))
-				if err := c.Upload(ctx, localScriptPath, remoteScriptPath); err != nil {
-					logger.Fatalf("failed to upload script for stage %s: %v", stage.Name, err)
-				}
-				// ensure executable and run
-				command = fmt.Sprintf("chmod +x '%s' && bash '%s'", remoteScriptPath, remoteScriptPath)
-			}
-			commandToRun = envPrefix + command
-		} else {
-			logger.Fatalf("stage %s has no command or script", stage.Name)
-		}
-
-		result, err := c.RunCommand(ctx, execution.CommandRequest{
-			Command: commandToRun,
-			Stdout:  stdoutSink,
-			Stderr:  stderrSink,
-			UsePTY:  usePTY,
-		})
-		if err != nil {
-			if logStageOutput && strings.TrimSpace(result.Output) != "" {
-				logger.Printf("Stage %s captured output:\n%s", stage.Name, result.Output)
-			}
-			logger.Fatalf("Stage %s failed: %v (exit code: %d)", stage.Name, err, result.ExitCode)
-		}
-		lastOutput = result.Output
-		if logStageOutput {
-			logger.Printf("Stage %s output: %s", stage.Name, result.Output)
-		}
-		logger.Printf("Stage %s completed (exit code: %d)", stage.Name, result.ExitCode)
-
-		// If append_metadata is true, parse stdout as JSON and append into metadata.Custom
-		if stage.AppendMetadata {
-			var out map[string]any
-			dec := json.NewDecoder(strings.NewReader(lastOutput))
-			dec.UseNumber()
-			if err := dec.Decode(&out); err != nil {
-				logger.Printf("WARNING: Stage %s append_metadata enabled but output is not valid JSON: %v", stage.Name, err)
-				logger.Printf("Stage %s output was: %s", stage.Name, lastOutput)
-			} else {
-				if metadata.Custom == nil {
-					metadata.Custom = map[string]string{}
-				}
-				for k, v := range out {
-					// Stringify values to store in Custom map[string]string
-					switch t := v.(type) {
-					case json.Number:
-						metadata.Custom[k] = t.String()
-					case string:
-						metadata.Custom[k] = t
-					default:
-						b, _ := json.Marshal(t)
-						metadata.Custom[k] = string(b)
-					}
-				}
-				logger.Printf("Stage %s metadata appended successfully", stage.Name)
-			}
-		}
-
-		// if stage has a health check run it (use CallWithRetry)
-		if stage.HealthCheck != nil {
-			hc := stage.HealthCheck
-			timeout, err := time.ParseDuration(hc.Timeout)
-			if err != nil {
-				logger.Fatalf("error parsing health check timeout: %v", err)
-			}
-			logger.Printf("Running health check: %s", hc.Type)
-			switch hc.Type {
-			case "port":
-				healthy, err := CallWithRetry(ctx, func() (bool, error) {
-					return c.CheckPort(ctx, hc.Target, timeout)
-				}, hc.Retries, time.Second)
-				if err != nil {
-					logger.Fatalf("Health check for stage %s failed: %v", stage.Name, err)
-				}
-				if !healthy {
-					logger.Fatalf("Health check for stage %s failed: port %s is not listening", stage.Name, hc.Target)
-				}
-				logger.Printf("Health check for stage %s passed: port %s is listening", stage.Name, hc.Target)
-			default:
-				// for now just port
-				logger.Fatalf("Unknown health check type for stage %s: %s", stage.Name, hc.Type)
-			}
-		}
-
-		// if stage has outputs, collect them
-		if stage.Outputs != nil {
-			for _, output := range stage.Outputs {
-				remotePath := output.RemotePath
-				localPath := output.LocalPath
-
-				// If no local path specified, use run directory
-				if localPath == "" {
-					localPath = filepath.Join(runDir, output.Name+".csv")
-				} else {
-					// Make path relative to run directory if it's not absolute
-					if !filepath.IsAbs(localPath) {
-						localPath = filepath.Join(runDir, localPath)
-					}
-				}
-
-				err := c.Scp(ctx, remotePath, localPath)
-				if err != nil {
-					logger.Fatalf("Failed to collect output %s for stage %s: %v", output.Name, stage.Name, err)
-				}
-				logger.Printf("Collected output %s: %s -> %s", output.Name, remotePath, localPath)
-
-				// Warn if timestamp columns lack explicit format
-				if output.DataSchema != nil {
-					for _, col := range output.DataSchema.Columns {
-						if col.Type == config.DataTypeTimestamp && strings.TrimSpace(col.Format) == "" {
-							logger.Printf("WARNING: data_schema.%s has type=timestamp without format; falling back to auto-detection which may be slower/ambiguous", col.Name)
-						}
-					}
-				}
-			}
-		}
-
-		c.Close()
+		logger.Fatalf("workflow failed: %v", stageErr)
+	}
+	if stopErr != nil {
+		logger.Fatalf("failed to stop background stages: %v", stopErr)
 	}
 
-	// plots
-	if cfg.Plots != nil {
-		plotsDir := filepath.Join(runDir, "plots")
-		if err := os.MkdirAll(plotsDir, 0755); err != nil {
-			logger.Fatalf("Failed to create plots directory: %v", err)
-		}
-
-		for _, plt := range cfg.Plots {
-			logger.Printf("Generating plot: %s", plt.Name)
-			var dataSourcePath string
-			var matchedOutput *config.Output
-			for _, stage := range cfg.Stages {
-				if stage.Outputs == nil {
-					continue
-				}
-				for _, output := range stage.Outputs {
-					if output.Name == plt.Source {
-						// Use the actual collected path
-						if output.LocalPath == "" {
-							dataSourcePath = filepath.Join(runDir, output.Name+".csv")
-						} else if !filepath.IsAbs(output.LocalPath) {
-							dataSourcePath = filepath.Join(runDir, output.LocalPath)
-						} else {
-							dataSourcePath = output.LocalPath
-						}
-						matchedOutput = &output
-						break
-					}
-				}
-				break
-			}
-
-			if dataSourcePath == "" {
-				logger.Fatalf("plot %s references unknown output %s", plt.Name, plt.Source)
-			}
-
-			// Resolve export path: use config if provided, else default under run plots dir
-			var plotExportPath string
-			if plt.ExportPath != "" {
-				if filepath.IsAbs(plt.ExportPath) {
-					plotExportPath = plt.ExportPath
-				} else {
-					plotExportPath = filepath.Join(runDir, plt.ExportPath)
-				}
-			} else {
-				plotExportPath = filepath.Join(plotsDir, plt.Name+".png")
-			}
-
-			// Ensure export directory exists
-			exportDir := filepath.Dir(plotExportPath)
-			if err := os.MkdirAll(exportDir, 0755); err != nil {
-				logger.Fatalf("Failed to create plot export directory: %v", err)
-			}
-
-			// Make paths absolute for external engines
-			absDataPath, err := filepath.Abs(dataSourcePath)
-			if err == nil {
-				dataSourcePath = absDataPath
-			}
-			absExportPath, err := filepath.Abs(plotExportPath)
-			if err == nil {
-				plotExportPath = absExportPath
-			}
-
-			// Generate the plot
-			var plotter plot.Plotter
-			// Attach timestamp from data_schema (if available) for seaborn engine
-			plotToRender := plt
-			if plt.Engine == "" || plt.Engine == "seaborn" {
-				if matchedOutput != nil && matchedOutput.DataSchema != nil {
-					// Find the column matching plot.X
-					for _, col := range matchedOutput.DataSchema.Columns {
-						if col.Name == plt.X && col.Type == config.DataTypeTimestamp {
-							if plotToRender.Options == nil {
-								plotToRender.Options = map[string]any{}
-							}
-							if strings.TrimSpace(col.Format) != "" {
-								plotToRender.Options["x_time_format"] = strings.ToLower(col.Format)
-							}
-							if strings.TrimSpace(col.Unit) != "" {
-								plotToRender.Options["x_time_unit"] = strings.ToLower(col.Unit)
-							}
-							break
-						}
-					}
-				}
-			}
-			switch plt.Engine {
-			case "", "seaborn":
-				plotter = plot.NewSeabornPlotter()
-			case "gonum":
-				plotter = plot.NewGonumPlotter()
-			default:
-				logger.Fatalf("unknown plot engine: %s", plt.Engine)
-			}
-			if err := plotter.GeneratePlot(ctx, plotToRender, dataSourcePath, plotExportPath); err != nil {
-				logger.Fatalf("failed to generate plot %s: %v", plt.Name, err)
-			}
-		}
+	if err := generatePlotsForRun(ctx, cfg, runDir, logger); err != nil {
+		logger.Fatalf("%v", err)
 	}
 
 	metadata.EndTime = time.Now()
@@ -347,6 +93,318 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 
 	logger.Printf("Workflow completed successfully!")
 	logger.Printf("Results saved to: %s", runDir)
+}
+
+// executeStages executes the stages of the benchmark
+// it returns an error if any stage fails,
+// nil if all stages succeed.
+func executeStages(
+	ctx context.Context,
+	cfg *config.Config,
+	runID, runDir string,
+	logger *log.Logger,
+	logWriter io.Writer,
+	metadata *RunMetadata,
+	backgroundMgr *backgroundManager,
+) error {
+	if len(cfg.Stages) == 0 {
+		return nil
+	}
+
+	envPrefix := buildEnvPrefix(runID, runDir, cfg)
+	consoleSink := resolveConsoleWriter()
+	stdoutSink := consoleSink
+	stderrSink := consoleSink
+	usePTY := consoleSink != nil
+	logStageOutput := consoleSink == nil || !writersReferToSameFD(consoleSink, logWriter)
+
+	for i, stage := range cfg.Stages {
+		logger.Printf("Executing stage: %d/%d %s", i+1, len(cfg.Stages), stage.Name)
+		host, ok := cfg.Hosts[stage.Host]
+		if !ok {
+			return fmt.Errorf("stage %s references unknown host %s", stage.Name, stage.Host)
+		}
+
+		client, err := openExecutionClient(host)
+		if err != nil {
+			return fmt.Errorf("error creating execution client for stage %s: %w", stage.Name, err)
+		}
+
+		commandBody, err := prepareStageCommand(ctx, stage, host, runID, client)
+		if err != nil {
+			_ = client.Close()
+			return err
+		}
+
+		if stage.Background {
+			pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
+			_ = client.Close()
+			if err != nil {
+				return err
+			}
+			backgroundMgr.Add(backgroundStage{stage: stage, hostAlias: stage.Host, host: host, pid: pid})
+			logger.Printf("Stage %s is running in background", stage.Name)
+			continue
+		}
+
+		result, err := client.RunCommand(ctx, execution.CommandRequest{
+			Command: envPrefix + commandBody,
+			Stdout:  stdoutSink,
+			Stderr:  stderrSink,
+			UsePTY:  usePTY,
+		})
+		if err != nil {
+			if logStageOutput && strings.TrimSpace(result.Output) != "" {
+				logger.Printf("Stage %s captured output:\n%s", stage.Name, result.Output)
+			}
+			_ = client.Close()
+			return fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
+		}
+
+		if logStageOutput {
+			logger.Printf("Stage %s output: %s", stage.Name, result.Output)
+		}
+		logger.Printf("Stage %s completed (exit code: %d)", stage.Name, result.ExitCode)
+
+		if stage.AppendMetadata {
+			if err := appendStageMetadata(stage, metadata, result.Output); err != nil {
+				logger.Printf("WARNING: %v", err)
+				logger.Printf("Stage %s output was: %s", stage.Name, result.Output)
+			} else {
+				logger.Printf("Stage %s metadata appended successfully", stage.Name)
+			}
+		}
+
+		if stage.HealthCheck != nil {
+			if err := runHealthCheck(ctx, client, stage, logger); err != nil {
+				_ = client.Close()
+				return err
+			}
+		}
+
+		if len(stage.Outputs) > 0 {
+			if err := collectStageOutputs(ctx, client, runDir, stage, logger); err != nil {
+				_ = client.Close()
+				return err
+			}
+		}
+
+		_ = client.Close()
+	}
+
+	return nil
+}
+
+func prepareStageCommand(ctx context.Context, stage config.Stage, host config.Host, runID string, client execution.ExecutionClient) (string, error) {
+	if strings.TrimSpace(stage.Command) != "" {
+		return stage.Command, nil
+	}
+	if strings.TrimSpace(stage.Script) == "" {
+		return "", fmt.Errorf("stage %s has no command or script", stage.Name)
+	}
+
+	if strings.TrimSpace(host.IP) == "" {
+		return fmt.Sprintf("bash ./%s", stage.Script), nil
+	}
+
+	localScriptPath := stage.Script
+	if !filepath.IsAbs(localScriptPath) {
+		if abs, err := filepath.Abs(localScriptPath); err == nil {
+			localScriptPath = abs
+		}
+	}
+	remoteScriptPath := filepath.Join("/tmp", fmt.Sprintf("benchctl-%s-%s", runID, filepath.Base(localScriptPath)))
+	if err := client.Upload(ctx, localScriptPath, remoteScriptPath); err != nil {
+		return "", fmt.Errorf("failed to upload script for stage %s: %w", stage.Name, err)
+	}
+	return fmt.Sprintf("chmod +x '%s' && bash '%s'", remoteScriptPath, remoteScriptPath), nil
+}
+
+// startBackgroundStage starts a background stage by running the command in the background using nohup.
+// this is kind of a hack but it makes it easier to monitor and implement them
+func startBackgroundStage(ctx context.Context, client execution.ExecutionClient, envPrefix, commandBody string, stage config.Stage) (string, error) {
+	backgroundCommand := fmt.Sprintf("%s nohup sh -c %s >/dev/null 2>&1 & echo $!", envPrefix, shellQuote(commandBody))
+	result, err := client.RunCommand(ctx, execution.CommandRequest{Command: backgroundCommand})
+	if err != nil {
+		return "", fmt.Errorf("stage %s failed to start background command: %w", stage.Name, err)
+	}
+	pid := parsePID(result.Output)
+	if pid == "" {
+		return "", fmt.Errorf("stage %s failed to start background command: pid not captured", stage.Name)
+	}
+	return pid, nil
+}
+
+// appendStageMetadata appends the stage's JSON marshalled output to the run metadata.
+func appendStageMetadata(stage config.Stage, metadata *RunMetadata, output string) error {
+	var out map[string]any
+	dec := json.NewDecoder(strings.NewReader(output))
+	dec.UseNumber()
+	if err := dec.Decode(&out); err != nil {
+		return fmt.Errorf("stage %s append_metadata enabled but output is not valid JSON: %w", stage.Name, err)
+	}
+	if metadata.Custom == nil {
+		metadata.Custom = map[string]string{}
+	}
+	for k, v := range out {
+		switch t := v.(type) {
+		case json.Number:
+			metadata.Custom[k] = t.String()
+		case string:
+			metadata.Custom[k] = t
+		default:
+			b, _ := json.Marshal(t)
+			metadata.Custom[k] = string(b)
+		}
+	}
+	return nil
+}
+
+// runHealthCheck runs the health check for a stage.
+func runHealthCheck(ctx context.Context, client execution.ExecutionClient, stage config.Stage, logger *log.Logger) error {
+	hc := stage.HealthCheck
+	timeout, err := time.ParseDuration(hc.Timeout)
+	if err != nil {
+		return fmt.Errorf("error parsing health check timeout for stage %s: %w", stage.Name, err)
+	}
+	logger.Printf("Running health check: %s", hc.Type)
+	switch hc.Type {
+	case "port":
+		healthy, err := CallWithRetry(ctx, func() (bool, error) {
+			return client.CheckPort(ctx, hc.Target, timeout)
+		}, hc.Retries, time.Second)
+		if err != nil {
+			return fmt.Errorf("health check for stage %s failed: %w", stage.Name, err)
+		}
+		if !healthy {
+			return fmt.Errorf("health check for stage %s failed: port %s is not listening", stage.Name, hc.Target)
+		}
+		logger.Printf("Health check for stage %s passed: port %s is listening", stage.Name, hc.Target)
+	default:
+		return fmt.Errorf("unknown health check type for stage %s: %s", stage.Name, hc.Type)
+	}
+	return nil
+}
+
+func generatePlotsForRun(ctx context.Context, cfg *config.Config, runDir string, logger *log.Logger) error {
+	if len(cfg.Plots) == 0 {
+		return nil
+	}
+
+	plotsDir := filepath.Join(runDir, "plots")
+	if err := os.MkdirAll(plotsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create plots directory: %w", err)
+	}
+
+	for _, plt := range cfg.Plots {
+		logger.Printf("Generating plot: %s", plt.Name)
+		var dataSourcePath string
+		var matchedOutput *config.Output
+		for _, stage := range cfg.Stages {
+			if stage.Outputs == nil {
+				continue
+			}
+			for _, output := range stage.Outputs {
+				if output.Name == plt.Source {
+					if output.LocalPath == "" {
+						dataSourcePath = filepath.Join(runDir, output.Name+".csv")
+					} else if !filepath.IsAbs(output.LocalPath) {
+						dataSourcePath = filepath.Join(runDir, output.LocalPath)
+					} else {
+						dataSourcePath = output.LocalPath
+					}
+					copy := output
+					matchedOutput = &copy
+					break
+				}
+			}
+			if dataSourcePath != "" {
+				break
+			}
+		}
+
+		if dataSourcePath == "" {
+			return fmt.Errorf("plot %s references unknown output %s", plt.Name, plt.Source)
+		}
+
+		var plotExportPath string
+		if plt.ExportPath != "" {
+			if filepath.IsAbs(plt.ExportPath) {
+				plotExportPath = plt.ExportPath
+			} else {
+				plotExportPath = filepath.Join(runDir, plt.ExportPath)
+			}
+		} else {
+			plotExportPath = filepath.Join(plotsDir, plt.Name+".png")
+		}
+
+		exportDir := filepath.Dir(plotExportPath)
+		if err := os.MkdirAll(exportDir, 0755); err != nil {
+			return fmt.Errorf("failed to create plot export directory: %w", err)
+		}
+
+		if absData, err := filepath.Abs(dataSourcePath); err == nil {
+			dataSourcePath = absData
+		}
+		if absExport, err := filepath.Abs(plotExportPath); err == nil {
+			plotExportPath = absExport
+		}
+
+		plotToRender := plt
+		if (plt.Engine == "" || plt.Engine == "seaborn") && matchedOutput != nil && matchedOutput.DataSchema != nil {
+			for _, col := range matchedOutput.DataSchema.Columns {
+				if col.Name == plt.X && col.Type == config.DataTypeTimestamp {
+					if plotToRender.Options == nil {
+						plotToRender.Options = map[string]any{}
+					}
+					if strings.TrimSpace(col.Format) != "" {
+						plotToRender.Options["x_time_format"] = strings.ToLower(col.Format)
+					}
+					if strings.TrimSpace(col.Unit) != "" {
+						plotToRender.Options["x_time_unit"] = strings.ToLower(col.Unit)
+					}
+					break
+				}
+			}
+		}
+
+		var plotter plot.Plotter
+		switch plt.Engine {
+		case "", "seaborn":
+			plotter = plot.NewSeabornPlotter()
+		case "gonum":
+			plotter = plot.NewGonumPlotter()
+		default:
+			return fmt.Errorf("unknown plot engine: %s", plt.Engine)
+		}
+
+		if err := plotter.GeneratePlot(ctx, plotToRender, dataSourcePath, plotExportPath); err != nil {
+			return fmt.Errorf("failed to generate plot %s: %w", plt.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// shellQuote quotes a command string for shell execution.
+func shellQuote(cmd string) string {
+	if cmd == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(cmd, "'", "'\"'\"'") + "'"
+}
+
+// parsePID parses the PID from the output of a command.
+func parsePID(output string) string {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
+		return ""
+	}
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }
 
 // createLogger creates a logger based on the logging configuration and returns a logger, a writer, and a function to close the writer.

@@ -203,3 +203,33 @@ func TestWorkflowAppendMetadata(t *testing.T) {
 		t.Errorf("expected custom.am_num=\"42\", got %q", got["am_num"])
 	}
 }
+
+func TestWorkflowBackgroundStage(t *testing.T) {
+	setupTest(t)
+	defer teardownTest(t)
+
+	cfg := loadWorkflowConfig(t, "background.yaml")
+	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+
+	runDir := filepath.Join(testOutputDir, "1")
+	monitorPath := filepath.Join(runDir, "monitor.csv")
+	data, err := os.ReadFile(monitorPath)
+	if err != nil {
+		t.Fatalf("failed to read background monitor output: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected monitor.csv to have header plus data rows, got %d lines", len(lines))
+	}
+	if lines[0] != "timestamp,counter" {
+		t.Fatalf("unexpected header in monitor.csv: %s", lines[0])
+	}
+	if lines[1] == lines[len(lines)-1] {
+		t.Errorf("expected counter values to change across samples, got %q", lines[1])
+	}
+
+	workloadPath := filepath.Join(runDir, "workload.txt")
+	if _, err := os.Stat(workloadPath); err != nil {
+		t.Fatalf("expected workload output to exist: %v", err)
+	}
+}
