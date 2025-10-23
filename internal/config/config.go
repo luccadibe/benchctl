@@ -81,9 +81,13 @@ type Stage struct {
 	Script string `yaml:"script,omitempty" json:"script,omitempty"`
 	// If true, the command/script stdout is expected to be a JSON object whose
 	// keys/values will be appended to run metadata under .Custom
-	AppendMetadata bool         `yaml:"append_metadata,omitempty" json:"append_metadata,omitempty"`
-	HealthCheck    *HealthCheck `yaml:"health_check,omitempty" json:"health_check,omitempty"`
-	Outputs        []Output     `yaml:"outputs,omitempty" json:"outputs,omitempty"`
+	AppendMetadata bool `yaml:"append_metadata,omitempty" json:"append_metadata,omitempty"`
+	// Whether the stage should be ran in the background, allowing execution to continue with other stages.
+	// Stages running in the background will be sent a SIGTERM when the last non-background
+	// task is executed.
+	Background  bool         `yaml:"background,omitempty" json:"background,omitempty"`
+	HealthCheck *HealthCheck `yaml:"health_check,omitempty" json:"health_check,omitempty"`
+	Outputs     []Output     `yaml:"outputs,omitempty" json:"outputs,omitempty"`
 }
 
 // HealthCheck determines readiness/success for a stage.
@@ -150,6 +154,10 @@ func validateConfig(cfg *Config) error {
 		hasScript := strings.TrimSpace(st.Script) != ""
 		if hasCmd == hasScript {
 			errs = append(errs, "exactly one of command or script must be set")
+		}
+
+		if st.Background && st.AppendMetadata {
+			errs = append(errs, fmt.Sprintf("stages[%d] with background=true cannot set append_metadata", i))
 		}
 
 		// health check validation
