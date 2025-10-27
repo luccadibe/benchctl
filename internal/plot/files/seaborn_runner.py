@@ -25,6 +25,7 @@ with open(args.spec) as f:
 df = pd.read_csv(args.input)
 opts = spec.get("opts", {})
 sns.set_theme(style=opts.get("style", "whitegrid"))
+groupby = spec.get("groupby")
 
 # Figure sizing: pixel-only (no inches fallback)
 dpi = int(opts.get("dpi", 150))
@@ -89,7 +90,10 @@ if t == "time_series":
         else:
             step = max(1, len(df) // max_points)
             df = df.iloc[::step]
-    ax = sns.lineplot(data=df, x=x, y=y)
+    lineplot_kwargs = dict(data=df, x=x, y=y)
+    if groupby:
+        lineplot_kwargs["hue"] = groupby
+    ax = sns.lineplot(**lineplot_kwargs)
     # If datetime, ensure date ticks/formatting are applied
     try:
         if pd.api.types.is_datetime64_any_dtype(df[x]):
@@ -122,14 +126,22 @@ elif t == "histogram":
     if max_rows and len(df) > max_rows:
         df = df.sample(n=max_rows, replace=False, random_state=opts.get("random_state"))
     bins = int(opts.get("bins", 16))
-    ax = sns.histplot(data=df, x=x, stat="probability", bins=bins)
+    histplot_kwargs = dict(data=df, x=x, stat="probability", bins=bins)
+    if groupby:
+        histplot_kwargs["hue"] = groupby
+        histplot_kwargs["element"] = opts.get("hist_element", "step")
+        histplot_kwargs["common_norm"] = bool(opts.get("hist_common_norm", False))
+    ax = sns.histplot(**histplot_kwargs)
 elif t == "boxplot":
     x, y = spec["x"], spec["y"]
     # For very large datasets, optionally sample rows
     max_rows = int(opts.get("max_rows", 0))
     if max_rows and len(df) > max_rows:
         df = df.sample(n=max_rows, replace=False, random_state=opts.get("random_state"))
-    ax = sns.boxplot(data=df, x=x, y=y)
+    boxplot_kwargs = dict(data=df, x=x, y=y)
+    if groupby:
+        boxplot_kwargs["hue"] = groupby
+    ax = sns.boxplot(**boxplot_kwargs)
 else:
     raise SystemExit(f"unsupported plot type: {t}")
 

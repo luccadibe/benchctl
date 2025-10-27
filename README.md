@@ -224,7 +224,12 @@ plots:
     type: time_series
     x: timestamp
     y: requests_per_second
+    groupby: pod_name
+    engine: seaborn
 ```
+
+- Set `groupby` (seaborn engine only) to split plots by a categorical column.
+- Leave `engine` unset to use the seaborn backend; set to `gonum` for Go rendered (no python needed).
 
 ## Usage
 

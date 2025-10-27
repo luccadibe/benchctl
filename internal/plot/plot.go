@@ -32,6 +32,7 @@ type Plot struct {
 	Format      string         `yaml:"format,omitempty" json:"format,omitempty" jsonschema:"enum=png,enum=svg,enum=pdf"`
 	ExportPath  string         `yaml:"export_path,omitempty" json:"export_path,omitempty"`
 	Engine      string         `yaml:"engine,omitempty" json:"engine,omitempty" jsonschema:"enum=gonum,enum=seaborn"` // default seaborn
+	GroupBy     string         `yaml:"groupby,omitempty" json:"groupby,omitempty"`
 	Options     map[string]any `yaml:"options,omitempty" json:"options,omitempty"`
 }
 
@@ -323,12 +324,13 @@ func createBoxPlot(p *gonumplot.Plot, data *CSVData, plot Plot) error {
 var seabornScript []byte
 
 type seabornSpec struct {
-	Type   string                 `json:"type"`
-	Title  string                 `json:"title"`
-	X      string                 `json:"x"`
-	Y      string                 `json:"y"`
-	Format string                 `json:"format"`
-	Opts   map[string]interface{} `json:"opts,omitempty"`
+	Type    string                 `json:"type"`
+	Title   string                 `json:"title"`
+	X       string                 `json:"x"`
+	Y       string                 `json:"y"`
+	Format  string                 `json:"format"`
+	GroupBy string                 `json:"groupby,omitempty"`
+	Opts    map[string]interface{} `json:"opts,omitempty"`
 	// Optional timestamp parsing hints derived from data_schema
 	XTimeFormat string `json:"x_time_format,omitempty"`
 	XTimeUnit   string `json:"x_time_unit,omitempty"`
@@ -349,7 +351,7 @@ func (s *SeabornPlotter) GeneratePlot(ctx context.Context, plot Plot, dataPath, 
 	} // rely on PATH;
 	spec := seabornSpec{
 		Type: plot.Type, Title: plot.Title, X: plot.X, Y: plot.Y,
-		Format: coalesce(plot.Format, "png"), Opts: plot.Options,
+		Format: coalesce(plot.Format, "png"), GroupBy: plot.GroupBy, Opts: plot.Options,
 	}
 
 	// Try to propagate timestamp format/unit from config data_schema for the source

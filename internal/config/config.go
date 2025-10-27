@@ -231,7 +231,8 @@ func validateConfig(cfg *Config) error {
 	}
 
 	// Validate plots
-	for i, plot := range cfg.Plots {
+	for i := range cfg.Plots {
+		plot := &cfg.Plots[i]
 		if strings.TrimSpace(plot.Name) == "" {
 			errs = append(errs, fmt.Sprintf("plots[%d].name must be set", i))
 		}
@@ -264,8 +265,9 @@ func validateConfig(cfg *Config) error {
 				errs = append(errs, fmt.Sprintf("plots[%d].format must be one of [png, svg, pdf]", i))
 			}
 		}
-		if strings.TrimSpace(plot.Engine) != "" {
-			switch plot.Engine {
+		engine := strings.TrimSpace(plot.Engine)
+		if engine != "" {
+			switch engine {
 			case "gonum", "seaborn":
 				// ok
 			default:
@@ -273,6 +275,10 @@ func validateConfig(cfg *Config) error {
 			}
 		} else {
 			plot.Engine = "seaborn" // default to seaborn
+			engine = "seaborn"
+		}
+		if strings.TrimSpace(plot.GroupBy) != "" && engine == "gonum" {
+			errs = append(errs, fmt.Sprintf("plots[%d].groupby is only supported with the seaborn engine", i))
 		}
 	}
 

@@ -14,6 +14,7 @@ This document describes how to configure plots in `benchctl`.
 
 - `title`: Plot title
 - `x`, `y`: Column names from the CSV
+- `groupby`: Optional column to split the plot by category (seaborn engine only)
 - `format`: `png`, `svg`, or `pdf`
 
 ## Seaborn engine options (`plots[].options`)
@@ -31,6 +32,10 @@ Styling:
 Performance (sampling):
 - Time series: `max_points` (int), `sampling`: `stride`|`random`, `random_state` (int)
 - Hist/Box: `max_rows` (int), `random_state` (int)
+
+Histogram overlays:
+- `hist_element`: override seaborn's `element` when grouping (default `step`)
+- `hist_common_norm`: boolean to normalize grouped histograms together (`false` by default when grouping)
 
 Time series specifics:
 - `x_label_angle`: float degrees to rotate x-axis labels (e.g., 45)
@@ -69,7 +74,26 @@ plots:
       sampling: stride   # or "random"
       x_label_angle: 45
       x_timestamp_format: medium
+
+Time series grouped by a categorical column (seaborn engine only):
+
+```yaml
+  - name: latency_by_pod
+    title: Latency (P95) by Pod
+    source: load_test_results
+    type: time_series
+    x: timestamp
+    y: latency_ms
+    groupby: pod_name
+    format: png
+    engine: seaborn
+    options:
+      legend: true
+      legend_loc: upper right
+      max_points: 2000
 ```
+
+When `groupby` is set, seaborn uses it as the hue/category column—producing separate line series, histogram overlays, or grouped box plots for each distinct value.
 
 Histogram with sampling:
 
