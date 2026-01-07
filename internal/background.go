@@ -146,12 +146,10 @@ func openExecutionClient(host config.Host) (execution.ExecutionClient, error) {
 func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, runDir string, stage config.Stage, logger *log.Logger) error {
 	for _, output := range stage.Outputs {
 		remotePath := output.RemotePath
-		localPath := output.LocalPath
-		if localPath == "" {
-			localPath = filepath.Join(runDir, output.Name+".csv")
-		} else if !filepath.IsAbs(localPath) {
-			localPath = filepath.Join(runDir, localPath)
-		}
+		// Extract extension from remote_path and construct filename as output.name + extension
+		ext := filepath.Ext(remotePath)
+		filename := output.Name + ext
+		localPath := filepath.Join(runDir, filename)
 		if err := client.Scp(ctx, remotePath, localPath); err != nil {
 			return fmt.Errorf("failed to collect output %s for stage %s: %w", output.Name, stage.Name, err)
 		}

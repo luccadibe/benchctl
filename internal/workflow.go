@@ -291,11 +291,6 @@ func generatePlotsForRun(ctx context.Context, cfg *config.Config, runDir string,
 		return nil
 	}
 
-	plotsDir := filepath.Join(runDir, "plots")
-	if err := os.MkdirAll(plotsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create plots directory: %w", err)
-	}
-
 	for _, plt := range cfg.Plots {
 		logger.Printf("Generating plot: %s", plt.Name)
 		var dataSourcePath string
@@ -306,13 +301,10 @@ func generatePlotsForRun(ctx context.Context, cfg *config.Config, runDir string,
 			}
 			for _, output := range stage.Outputs {
 				if output.Name == plt.Source {
-					if output.LocalPath == "" {
-						dataSourcePath = filepath.Join(runDir, output.Name+".csv")
-					} else if !filepath.IsAbs(output.LocalPath) {
-						dataSourcePath = filepath.Join(runDir, output.LocalPath)
-					} else {
-						dataSourcePath = output.LocalPath
-					}
+					// Extract extension from remote_path and construct filename as output.name + extension
+					ext := filepath.Ext(output.RemotePath)
+					filename := output.Name + ext
+					dataSourcePath = filepath.Join(runDir, filename)
 					copy := output
 					matchedOutput = &copy
 					break
@@ -327,21 +319,12 @@ func generatePlotsForRun(ctx context.Context, cfg *config.Config, runDir string,
 			return fmt.Errorf("plot %s references unknown output %s", plt.Name, plt.Source)
 		}
 
-		var plotExportPath string
-		if plt.ExportPath != "" {
-			if filepath.IsAbs(plt.ExportPath) {
-				plotExportPath = plt.ExportPath
-			} else {
-				plotExportPath = filepath.Join(runDir, plt.ExportPath)
-			}
-		} else {
-			plotExportPath = filepath.Join(plotsDir, plt.Name+".png")
+		// Construct plot filename as plot.Name + "." + plot.Format
+		plotFormat := plt.Format
+		if plotFormat == "" {
+			plotFormat = "png"
 		}
-
-		exportDir := filepath.Dir(plotExportPath)
-		if err := os.MkdirAll(exportDir, 0755); err != nil {
-			return fmt.Errorf("failed to create plot export directory: %w", err)
-		}
+		plotExportPath := filepath.Join(runDir, plt.Name+"."+plotFormat)
 
 		if absData, err := filepath.Abs(dataSourcePath); err == nil {
 			dataSourcePath = absData

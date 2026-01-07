@@ -39,7 +39,6 @@ stages:
     outputs:
       - name: resource_monitor
         remote_path: /tmp/resource_monitor.csv
-        local_path: ./results/resource_monitor.csv
         data_schema:
           format: csv
           columns:
@@ -68,7 +67,6 @@ stages:
     outputs:
       - name: load_test_results
         remote_path: /tmp/load_test_results.csv
-        local_path: ./results/load_test_results.csv
         data_schema:
           format: csv
           columns:
@@ -105,7 +103,6 @@ plots:
     x: timestamp
     y: latency_ms
     format: png
-    export_path: ./plots/latency_over_time.png
     engine: seaborn
     options:
       style: whitegrid
@@ -123,7 +120,6 @@ plots:
     y: latency_ms
     groupby: status
     format: png
-    export_path: ./plots/latency_over_time_by_status.png
     engine: seaborn
     options:
       legend: true
@@ -136,7 +132,6 @@ plots:
     type: histogram
     x: latency_ms
     format: png
-    export_path: ./plots/latency_distribution.png
     engine: seaborn
     options:
       style: whitegrid
@@ -149,7 +144,6 @@ plots:
     x: task_type
     y: latency_ms
     format: png
-    export_path: ./plots/latency_boxplot.png
     engine: seaborn
     options:
       style: whitegrid
@@ -161,7 +155,6 @@ plots:
     x: timestamp_ms
     y: cpu_percent
     format: png
-    export_path: ./plots/resource_cpu_time.png
     engine: seaborn
     options:
       style: whitegrid

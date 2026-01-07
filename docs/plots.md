@@ -8,7 +8,7 @@ This document describes how to configure plots in `benchctl`.
 - `source` must match a stage output `name` (CSV).
 - Supported `type`: `time_series`, `histogram`, `boxplot`.
 - `engine`: `seaborn` (default) or `gonum`.
-- `export_path`: relative paths are resolved under the run directory; e.g., `./plots/foo.png` -> `<run_dir>/plots/foo.png`.
+- Plots are stored directly in the run directory using the filename `plot.name + "." + plot.format` (e.g., `latency_over_time.png`).
 
 ## Common fields
 
@@ -63,7 +63,6 @@ plots:
     x: timestamp
     y: latency_ms
     format: png
-    export_path: ./plots/latency_over_time.png
     engine: seaborn
     options:
       style: whitegrid
@@ -103,7 +102,7 @@ Histogram with sampling:
     source: load_test_results
     type: histogram
     x: latency_ms
-    export_path: ./plots/latency_distribution.png
+    format: png
     engine: seaborn
     options:
       bins: 30
@@ -119,7 +118,7 @@ Boxplot:
     type: boxplot
     x: task_type
     y: latency_ms
-    export_path: ./plots/latency_boxplot.png
+    format: png
     engine: seaborn
     options:
       width_px: 900

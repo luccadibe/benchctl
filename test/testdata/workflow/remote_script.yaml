@@ -16,5 +16,4 @@ stages:
     outputs:
       - name: remote_created
         remote_path: /tmp/benchctl-remote-script.txt
-        local_path: /tmp/benchctl-test-remote-script.txt
 
