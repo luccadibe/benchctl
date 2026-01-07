@@ -16,7 +16,6 @@ stages:
     outputs:
       - name: test_output
         remote_path: /config/test_output.txt
-        local_path: /tmp/benchctl-test-collected.txt
         data_schema:
           format: csv
           columns:

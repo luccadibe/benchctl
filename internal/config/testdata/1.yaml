@@ -24,7 +24,6 @@ stages:
     outputs:
       - name: benchmark_data
         remote_path: /tmp/data.csv
-        local_path: ./results/run-001/data.csv
         data_schema:
           format: csv
           columns:
@@ -46,5 +45,4 @@ plots:
     y: latency_ms
     aggregation: p95
     format: png
-    export_path: ./results/run-001/plots/latency.png
 

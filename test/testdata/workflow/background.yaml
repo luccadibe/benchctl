@@ -18,7 +18,6 @@ stages:
     outputs:
       - name: monitor
         remote_path: /tmp/benchctl-bg.csv
-        local_path: monitor.csv
         data_schema:
           format: csv
           columns:
@@ -37,4 +36,3 @@ stages:
     outputs:
       - name: workload
         remote_path: /tmp/benchctl-work.txt
-        local_path: workload.txt

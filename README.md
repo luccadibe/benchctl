@@ -109,7 +109,6 @@ plots:
     y: latency_ms
     engine: seaborn
     format: png
-    export_path: ./plots/latency_over_time.png
     options:
       dpi: 150
       width_px: 1200
@@ -127,7 +126,7 @@ benchctl run --config benchmark.yaml
 ```bash
 # Results saved to ./results/1/...
 # Check metadata.json for run details
-# Generated plots in ./results/1/plots/
+# Generated plots and collected files are stored directly in ./results/1/
 ```
 
 ## Plotting engines

@@ -190,6 +190,10 @@ func validateConfig(cfg *Config) error {
 			if strings.TrimSpace(output.RemotePath) == "" {
 				errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].remote_path must be set", i, j))
 			}
+			// TODO remove this, schema handles this
+			if strings.TrimSpace(output.LocalPath) != "" {
+				errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].local_path is not allowed; files are stored directly in the run directory using output.name", i, j))
+			}
 			if output.DataSchema != nil {
 				if strings.TrimSpace(output.DataSchema.Format) == "" {
 					errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.format must be set", i, j))
@@ -220,13 +224,20 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	// Collect all output names for plot validation
-	outputNames := map[string]struct{}{}
-	for _, stage := range cfg.Stages {
+	// Collect all output names for plot validation and uniqueness check
+	outputNames := map[string][]int{} // map from output name to stage indices
+	for i, stage := range cfg.Stages {
 		for _, output := range stage.Outputs {
 			if strings.TrimSpace(output.Name) != "" {
-				outputNames[output.Name] = struct{}{}
+				outputNames[output.Name] = append(outputNames[output.Name], i)
 			}
+		}
+	}
+
+	// Check for duplicate output names
+	for name, stageIndices := range outputNames {
+		if len(stageIndices) > 1 {
+			errs = append(errs, fmt.Sprintf("output name '%s' is not unique; found in stages: %v", name, stageIndices))
 		}
 	}
 
@@ -279,6 +290,10 @@ func validateConfig(cfg *Config) error {
 		}
 		if strings.TrimSpace(plot.GroupBy) != "" && engine == "gonum" {
 			errs = append(errs, fmt.Sprintf("plots[%d].groupby is only supported with the seaborn engine", i))
+		}
+		if strings.TrimSpace(plot.ExportPath) != "" {
+			// TODO remove this, schema handles this
+			errs = append(errs, fmt.Sprintf("plots[%d].export_path is not allowed; plots are stored directly in the run directory using plot.name", i))
 		}
 	}
 

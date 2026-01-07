@@ -133,11 +133,13 @@ func TestWorkflowWithOutput(t *testing.T) {
 	internal.RunWorkflow(context.Background(), cfg, customMetadata)
 
 	// Verify file was actually copied
-	if _, err := os.Stat("/tmp/benchctl-test-collected.txt"); os.IsNotExist(err) {
+	// Files should bein run directory using output.name + extension from remote_path
+	collectedFile := filepath.Join(testOutputDir, "1", "test_output.txt")
+	if _, err := os.Stat(collectedFile); os.IsNotExist(err) {
 		t.Error("expected collected file to exist")
 	} else {
 		// Verify file contents
-		data, err := os.ReadFile("/tmp/benchctl-test-collected.txt")
+		data, err := os.ReadFile(collectedFile)
 		if err != nil {
 			t.Errorf("failed to read collected file: %v", err)
 		}
@@ -164,7 +166,8 @@ func TestWorkflowRemoteScriptExecution(t *testing.T) {
 	internal.RunWorkflow(context.Background(), cfg, customMetadata)
 
 	// Verify file created by the remote script was copied locally
-	localCollected := "/tmp/benchctl-test-remote-script.txt"
+	// Files should be in run directory using output.name + extension
+	localCollected := filepath.Join(testOutputDir, "1", "remote_created.txt")
 	if _, err := os.Stat(localCollected); os.IsNotExist(err) {
 		t.Fatalf("expected remote-script collected file to exist: %s", localCollected)
 	}
