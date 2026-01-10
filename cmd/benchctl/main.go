@@ -39,6 +39,11 @@ var metadataFlag = &cli.StringSliceFlag{
 	Usage:   "Custom metadata in the format 'key=value' (can be used multiple times)",
 	Aliases: []string{"m"},
 }
+var uiAddrFlag = &cli.StringFlag{
+	Name:  "addr",
+	Usage: "Address to serve the UI (host:port)",
+	Value: "127.0.0.1:8787",
+}
 
 func main() {
 
@@ -210,6 +215,29 @@ func main() {
 					}
 					fmt.Println(internal.PrintComparisonResults(results))
 					return nil
+				},
+			},
+			// ui
+			{
+				Name:  "ui",
+				Usage: "Serve the local web UI",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					cfgFile := cmd.String(configFlag.Name)
+					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
+						cfgFile = env
+					}
+					cfg, err := parseConfig(cfgFile)
+					if err != nil {
+						return err
+					}
+					addr := cmd.String(uiAddrFlag.Name)
+					fmt.Printf("Serving UI at http://%s\n", addr)
+					fmt.Printf("Runs directory: %s\n", cfg.Benchmark.OutputDir)
+					return internal.ServeUI(addr, cfg.Benchmark.OutputDir)
+				},
+				Flags: []cli.Flag{
+					configFlag,
+					uiAddrFlag,
 				},
 			},
 		},

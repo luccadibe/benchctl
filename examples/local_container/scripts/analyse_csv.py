@@ -42,8 +42,8 @@ def main():
         print("BENCHCTL_* env vars missing; expected BENCHCTL_RUN_ID, BENCHCTL_RUN_DIR, BENCHCTL_OUTPUT_DIR")
         sys.exit(2)
 
-    # look for the cSV in results/<run_id>/results/load_test_results.csv
-    csv_path = os.path.join(run_dir, "results", "load_test_results.csv")
+    # look for the cSV in <run_id>/load_test_results.csv
+    csv_path = os.path.join(run_dir, "load_test_results.csv")
     if not os.path.exists(csv_path):
         print(f"load_test_results.csv not found at {csv_path}")
         sys.exit(3)
