@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/luccadibe/benchctl/internal"
@@ -38,6 +39,11 @@ var metadataFlag = &cli.StringSliceFlag{
 	Name:    "metadata",
 	Usage:   "Custom metadata in the format 'key=value' (can be used multiple times)",
 	Aliases: []string{"m"},
+}
+var environmentFlag = &cli.StringSliceFlag{
+	Name:    "environment",
+	Usage:   "Environment variable in the format 'KEY=VALUE' (can be used multiple times)",
+	Aliases: []string{"e"},
 }
 var uiAddrFlag = &cli.StringFlag{
 	Name:  "addr",
@@ -74,6 +80,11 @@ func main() {
 					if err != nil {
 						return err
 					}
+					envEntries := cmd.StringSlice(environmentFlag.Name)
+					envVars, err := parseEnvironment(envEntries)
+					if err != nil {
+						return err
+					}
 					timeout := cmd.Duration(timeoutFlag.Name)
 					timeoutProvided := cmd.IsSet(timeoutFlag.Name)
 
@@ -86,11 +97,12 @@ func main() {
 						subCtx = ctx
 					}
 
-					internal.RunWorkflow(subCtx, cfg, customMetadata)
+					internal.RunWorkflow(subCtx, cfg, customMetadata, envVars)
 					return nil
 				},
 				Flags: []cli.Flag{
 					metadataFlag,
+					environmentFlag,
 					timeoutFlag,
 				},
 			},
@@ -262,6 +274,8 @@ func parseConfig(cfgFile string) (*config.Config, error) {
 	return cfg, nil
 }
 
+var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 func parseMetadata(md []string) (map[string]string, error) {
 	customMetadata := make(map[string]string)
 	for _, metadataFlag := range md {
@@ -272,4 +286,24 @@ func parseMetadata(md []string) (map[string]string, error) {
 		customMetadata[parts[0]] = parts[1]
 	}
 	return customMetadata, nil
+}
+
+// used to parse the --environment / -e flag
+func parseEnvironment(entries []string) (map[string]string, error) {
+	envVars := make(map[string]string)
+	for _, entry := range entries {
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("Invalid environment format: %s. Expected format: KEY=VALUE", entry)
+		}
+		key := strings.TrimSpace(parts[0])
+		if key == "" {
+			return nil, fmt.Errorf("Invalid environment format: %s. Expected format: KEY=VALUE", entry)
+		}
+		if !envKeyPattern.MatchString(key) {
+			return nil, fmt.Errorf("Invalid environment key: %s", key)
+		}
+		envVars[key] = parts[1]
+	}
+	return envVars, nil
 }

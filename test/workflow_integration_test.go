@@ -67,7 +67,7 @@ func TestWorkflowSimple(t *testing.T) {
 
 	// Run workflow - this will use log.Fatal on error, so we can't capture it easily
 	// For now, we just ensure it doesn't panic
-	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 
 	// Should not panic
 }
@@ -77,7 +77,7 @@ func TestWorkflowMultiStage(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "multi_stage.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 
 	// Should not panic
 }
@@ -95,7 +95,7 @@ func TestWorkflowWithHealthCheck(t *testing.T) {
 	// Start workflow in goroutine since it might take time
 	done := make(chan bool)
 	go func() {
-		internal.RunWorkflow(context.Background(), cfg, customMetadata)
+		internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 		done <- true
 	}()
 
@@ -130,7 +130,7 @@ func TestWorkflowWithOutput(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "with_output.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 
 	// Verify file was actually copied
 	// Files should bein run directory using output.name + extension from remote_path
@@ -153,7 +153,7 @@ func TestWorkflowCommandWithSpecialCharacters(t *testing.T) {
 	setupTest(t)
 	defer teardownTest(t)
 	cfg := loadWorkflowConfig(t, "special_chars.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 
 	// should not panic
 }
@@ -163,7 +163,7 @@ func TestWorkflowRemoteScriptExecution(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "remote_script.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 
 	// Verify file created by the remote script was copied locally
 	// Files should be in run directory using output.name + extension
@@ -185,7 +185,7 @@ func TestWorkflowAppendMetadata(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "append_metadata.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 
 	// Inspect metadata.json under the first run directory
 	mdPath := filepath.Join(testOutputDir, "1", "metadata.json")
@@ -212,7 +212,7 @@ func TestWorkflowBackgroundStage(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "background.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata)
+	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
 
 	runDir := filepath.Join(testOutputDir, "1")
 	monitorPath := filepath.Join(runDir, "monitor.csv")

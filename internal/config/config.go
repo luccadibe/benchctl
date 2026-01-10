@@ -37,6 +37,8 @@ type Benchmark struct {
 	Name string `yaml:"name" json:"name"`
 	// the directory to save the results
 	OutputDir string `yaml:"output_dir" json:"output_dir"`
+	// Shell command used to execute stages (default: "bash -lic").
+	Shell string `yaml:"shell,omitempty" json:"shell,omitempty" jsonschema:"default=bash -lic"`
 	// the logging configuration
 	Logging *LoggingConfig `yaml:"logging,omitempty" json:"logging,omitempty"`
 }
@@ -79,6 +81,8 @@ type Stage struct {
 	Command string `yaml:"command,omitempty" json:"command,omitempty"`
 	// Script is a path to the script to execute. It will be copied to the host and executed.
 	Script string `yaml:"script,omitempty" json:"script,omitempty"`
+	// Shell command used to execute this stage (defaults to benchmark.shell).
+	Shell string `yaml:"shell,omitempty" json:"shell,omitempty"`
 	// If true, the command/script stdout is expected to be a JSON object whose
 	// keys/values will be appended to run metadata under .Custom
 	AppendMetadata bool `yaml:"append_metadata,omitempty" json:"append_metadata,omitempty"`
