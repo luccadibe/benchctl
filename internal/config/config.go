@@ -76,9 +76,10 @@ type Host struct {
 
 // Stage is a step in the workflow.
 type Stage struct {
-	Name    string `yaml:"name" json:"name"`
-	Host    string `yaml:"host,omitempty" json:"host,omitempty"`
-	Command string `yaml:"command,omitempty" json:"command,omitempty"`
+	Name    string   `yaml:"name" json:"name"`
+	Host    string   `yaml:"host,omitempty" json:"host,omitempty"`
+	Hosts   []string `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+	Command string   `yaml:"command,omitempty" json:"command,omitempty"`
 	// Script is a path to the script to execute. It will be copied to the host and executed.
 	Script string `yaml:"script,omitempty" json:"script,omitempty"`
 	// Shell command used to execute this stage (defaults to benchmark.shell).
@@ -149,9 +150,29 @@ func validateConfig(cfg *Config) error {
 		if strings.TrimSpace(st.Name) == "" {
 			errs = append(errs, fmt.Sprintf("stages[%d].name must be set", i))
 		}
+		if st.Host != "" && len(st.Hosts) > 0 {
+			errs = append(errs, fmt.Sprintf("stages[%d] cannot set both host and hosts", i))
+		}
 		if st.Host != "" {
 			if _, ok := hostAliases[st.Host]; !ok {
 				errs = append(errs, fmt.Sprintf("stages[%d].host references unknown host '%s'", i, st.Host))
+			}
+		}
+		if len(st.Hosts) > 0 {
+			seen := make(map[string]struct{}, len(st.Hosts))
+			for _, hostAlias := range st.Hosts {
+				if strings.TrimSpace(hostAlias) == "" {
+					errs = append(errs, fmt.Sprintf("stages[%d].hosts entries must be non-empty", i))
+					continue
+				}
+				if _, ok := seen[hostAlias]; ok {
+					errs = append(errs, fmt.Sprintf("stages[%d].hosts contains duplicate host '%s'", i, hostAlias))
+					continue
+				}
+				seen[hostAlias] = struct{}{}
+				if _, ok := hostAliases[hostAlias]; !ok {
+					errs = append(errs, fmt.Sprintf("stages[%d].hosts references unknown host '%s'", i, hostAlias))
+				}
 			}
 		}
 		hasCmd := strings.TrimSpace(st.Command) != ""
