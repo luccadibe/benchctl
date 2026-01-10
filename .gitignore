@@ -11,3 +11,8 @@ design.md
 dist/
 
 .env
+
+# Embedded UI build output
+internal/uiassets/dist/
+
+localtesting
