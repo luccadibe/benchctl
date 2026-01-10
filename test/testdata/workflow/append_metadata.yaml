@@ -8,6 +8,7 @@ hosts:
 stages:
   - name: emit-json
     host: local
+    shell: bash -lc
     command: |
       echo '{"am_key":"am_value","am_num":42}'
     append_metadata: true

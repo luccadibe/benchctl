@@ -190,7 +190,22 @@ stages:
 #### Shell execution
 Stages run through a shell command. Set `benchmark.shell` to control it (default: `bash -lic`), which loads login + interactive environment (PATH, JAVA_HOME, etc). Override per stage with `stages[].shell`.
 
-Background stages run alongside the rest of the workflow. benchctl keeps them alive until the final non-background stage finishes, then sends SIGTERM, waits `BackgroundTerminationGrace` (2 seconds by default), and finally SIGKILL if they are still running. 
+#### Hosts and multi-host stages
+- Use `host` for a single host or `hosts` for multiple hosts. If neither is set, the stage runs on `local`.
+- Hosts in `hosts` execute sequentially in the listed order.
+- Outputs collected from multi-host stages are suffixed as `outputName__host.ext`.
+- If `append_metadata` is enabled with multiple hosts, only the first host’s output is used (a warning is logged).
+
+Example:
+```yaml
+stages:
+  - name: run-everywhere
+    hosts: [vm1, vm2]
+    command: uname -a
+```
+
+Background stages run alongside the rest of the workflow. benchctl keeps them alive until the final non-background stage finishes, then sends SIGTERM to the stage's process group, waits `BackgroundTerminationGrace` (2 seconds by default), and finally SIGKILL if they are still running.
+This uses `setsid` to start a new process group, so the entire background task tree is terminated reliably.
 Their outputs are collected after shutdown, so its ideal for monitoring tasks, like resource usage monitoring.
 Background stages cannot use `append_metadata`.
 

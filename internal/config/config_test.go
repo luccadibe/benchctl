@@ -73,6 +73,48 @@ func TestLoadConfig_InvalidStage(t *testing.T) {
 	}
 }
 
+func TestStageHostAndHostsConflict(t *testing.T) {
+	yaml := `
+benchmark:
+  name: conflict
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    host: local
+    hosts: [local]
+    command: echo hello
+`
+	_, err := ParseYAML([]byte(yaml))
+	if err == nil {
+		t.Fatalf("expected error for stage with both host and hosts")
+	}
+	if !strings.Contains(err.Error(), "cannot set both host and hosts") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestStageDefaultHostLocal(t *testing.T) {
+	yaml := `
+benchmark:
+  name: default-host
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    command: echo hello
+`
+	cfg, err := ParseYAML([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Stages[0].Host != "" || len(cfg.Stages[0].Hosts) != 0 {
+		t.Fatalf("expected stage host fields to be empty")
+	}
+}
+
 // TestLoadConfig_BadHealthCheck validates error messages for invalid healthcheck configuration.
 func TestLoadConfig_BadHealthCheck(t *testing.T) {
 	cfgPath := filepath.Join("testdata", "3.yaml")

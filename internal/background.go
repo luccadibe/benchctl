@@ -69,7 +69,7 @@ func (m *backgroundManager) stopStage(ctx context.Context, runDir string, record
 	}
 
 	if len(record.stage.Outputs) > 0 {
-		if err := collectStageOutputs(ctx, client, runDir, record.stage, m.logger); err != nil {
+		if err := collectStageOutputs(ctx, client, runDir, record.stage, m.logger, record.hostAlias); err != nil {
 			m.logger.Printf("WARNING: background stage %s outputs failed to collect: %v", record.stage.Name, err)
 		}
 	}
@@ -79,7 +79,7 @@ func (m *backgroundManager) stopStage(ctx context.Context, runDir string, record
 
 // terminatePID sends a SIGTERM to the process and waits for it to exit.
 func terminatePID(ctx context.Context, client execution.ExecutionClient, stageName, pid string, logger *log.Logger) error {
-	termCmd := fmt.Sprintf("kill -TERM %s >/dev/null 2>&1 || true", pid)
+	termCmd := fmt.Sprintf("kill -TERM -%s >/dev/null 2>&1 || true", pid)
 	_, _ = client.RunCommand(ctx, execution.CommandRequest{Command: termCmd, DisableCapture: true})
 
 	select {
@@ -94,7 +94,7 @@ func terminatePID(ctx context.Context, client execution.ExecutionClient, stageNa
 	}
 
 	if alive {
-		killCmd := fmt.Sprintf("kill -KILL %s >/dev/null 2>&1 || true", pid)
+		killCmd := fmt.Sprintf("kill -KILL -%s >/dev/null 2>&1 || true", pid)
 		_, _ = client.RunCommand(ctx, execution.CommandRequest{Command: killCmd, DisableCapture: true})
 		if err := waitForExit(ctx, client, pid); err != nil {
 			logger.Printf("WARNING: background stage %s still running: %v", stageName, err)
@@ -107,6 +107,16 @@ func terminatePID(ctx context.Context, client execution.ExecutionClient, stageNa
 // processAlive checks if a process is still running by sending a SIG0.
 func processAlive(ctx context.Context, client execution.ExecutionClient, pid string) (bool, error) {
 	res, err := client.RunCommand(ctx, execution.CommandRequest{
+		Command:        fmt.Sprintf("kill -0 -%s >/dev/null 2>&1", pid),
+		DisableCapture: true,
+	})
+	if err != nil && res.ExitCode == -1 {
+		return false, err
+	}
+	if res.ExitCode == 0 {
+		return true, nil
+	}
+	res, err = client.RunCommand(ctx, execution.CommandRequest{
 		Command:        fmt.Sprintf("kill -0 %s >/dev/null 2>&1", pid),
 		DisableCapture: true,
 	})
@@ -143,12 +153,19 @@ func openExecutionClient(host config.Host) (execution.ExecutionClient, error) {
 	return execution.NewSSHClient(host)
 }
 
-func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, runDir string, stage config.Stage, logger *log.Logger) error {
+func outputFilename(output config.Output, stage config.Stage, hostAlias string) string {
+	ext := filepath.Ext(output.RemotePath)
+	filename := output.Name + ext
+	if len(stage.Hosts) > 0 {
+		filename = output.Name + "__" + hostAlias + ext
+	}
+	return filename
+}
+
+func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, runDir string, stage config.Stage, logger *log.Logger, hostAlias string) error {
 	for _, output := range stage.Outputs {
 		remotePath := output.RemotePath
-		// Extract extension from remote_path and construct filename as output.name + extension
-		ext := filepath.Ext(remotePath)
-		filename := output.Name + ext
+		filename := outputFilename(output, stage, hostAlias)
 		localPath := filepath.Join(runDir, filename)
 		if err := client.Scp(ctx, remotePath, localPath); err != nil {
 			return fmt.Errorf("failed to collect output %s for stage %s: %w", output.Name, stage.Name, err)

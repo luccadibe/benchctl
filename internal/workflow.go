@@ -122,81 +122,105 @@ func executeStages(
 
 	for i, stage := range cfg.Stages {
 		logger.Printf("Executing stage: %d/%d %s", i+1, len(cfg.Stages), stage.Name)
-		host, ok := cfg.Hosts[stage.Host]
-		if !ok {
-			return fmt.Errorf("stage %s references unknown host %s", stage.Name, stage.Host)
-		}
+		hostAliases := resolveStageHosts(stage)
+		for hostIndex, hostAlias := range hostAliases {
+			host, ok := cfg.Hosts[hostAlias]
+			if !ok {
+				if hostAlias != "local" {
+					return fmt.Errorf("stage %s references unknown host %s", stage.Name, hostAlias)
+				}
+				host = config.Host{}
+			}
 
-		client, err := openExecutionClient(host)
-		if err != nil {
-			return fmt.Errorf("error creating execution client for stage %s: %w", stage.Name, err)
-		}
-
-		commandBody, err := prepareStageCommand(ctx, stage, host, runID, client)
-		if err != nil {
-			_ = client.Close()
-			return err
-		}
-
-		commandBody = wrapWithShell(commandBody, resolveStageShell(cfg, stage))
-
-		if stage.Background {
-			pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
-			_ = client.Close()
+			client, err := openExecutionClient(host)
 			if err != nil {
+				return fmt.Errorf("error creating execution client for stage %s: %w", stage.Name, err)
+			}
+
+			commandBody, err := prepareStageCommand(ctx, stage, host, runID, client)
+			if err != nil {
+				_ = client.Close()
 				return err
 			}
-			backgroundMgr.Add(backgroundStage{stage: stage, hostAlias: stage.Host, host: host, pid: pid})
-			logger.Printf("Stage %s is running in background", stage.Name)
-			continue
-		}
 
-		result, err := client.RunCommand(ctx, execution.CommandRequest{
-			Command: envPrefix + commandBody,
-			Stdout:  stdoutSink,
-			Stderr:  stderrSink,
-			UsePTY:  usePTY,
-		})
-		if err != nil {
-			if logStageOutput && strings.TrimSpace(result.Output) != "" {
-				logger.Printf("Stage %s captured output:\n%s", stage.Name, result.Output)
+			commandBody = wrapWithShell(commandBody, resolveStageShell(cfg, stage))
+
+			if stage.Background {
+				pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
+				_ = client.Close()
+				if err != nil {
+					return err
+				}
+				backgroundMgr.Add(backgroundStage{stage: stage, hostAlias: hostAlias, host: host, pid: pid})
+				logger.Printf("Stage %s is running in background", stage.Name)
+				continue
 			}
+
+			result, err := client.RunCommand(ctx, execution.CommandRequest{
+				Command: envPrefix + commandBody,
+				Stdout:  stdoutSink,
+				Stderr:  stderrSink,
+				UsePTY:  usePTY,
+			})
+			if err == nil && result.ExitCode != 0 {
+				err = fmt.Errorf("command exited with code %d", result.ExitCode)
+			}
+			if err != nil {
+				if logStageOutput && strings.TrimSpace(result.Output) != "" {
+					logger.Printf("Stage %s captured output:\n%s", stage.Name, result.Output)
+				}
+				_ = client.Close()
+				return fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
+			}
+
+			if logStageOutput {
+				logger.Printf("Stage %s output: %s", stage.Name, result.Output)
+			}
+			logger.Printf("Stage %s completed (exit code: %d)", stage.Name, result.ExitCode)
+
+			if stage.AppendMetadata {
+				if hostIndex == 0 {
+					if len(hostAliases) > 1 {
+						logger.Printf("WARNING: stage %s append_metadata enabled with multiple hosts; only first host will be used", stage.Name)
+					}
+					if err := appendStageMetadata(stage, metadata, result.Output); err != nil {
+						logger.Printf("WARNING: %v", err)
+						logger.Printf("Stage %s output was: %s", stage.Name, result.Output)
+					} else {
+						logger.Printf("Stage %s metadata appended successfully", stage.Name)
+					}
+				}
+			}
+
+			if stage.HealthCheck != nil {
+				if err := runHealthCheck(ctx, client, stage, logger); err != nil {
+					_ = client.Close()
+					return err
+				}
+			}
+
+			if len(stage.Outputs) > 0 {
+				if err := collectStageOutputs(ctx, client, runDir, stage, logger, hostAlias); err != nil {
+					_ = client.Close()
+					return err
+				}
+			}
+
 			_ = client.Close()
-			return fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
 		}
-
-		if logStageOutput {
-			logger.Printf("Stage %s output: %s", stage.Name, result.Output)
-		}
-		logger.Printf("Stage %s completed (exit code: %d)", stage.Name, result.ExitCode)
-
-		if stage.AppendMetadata {
-			if err := appendStageMetadata(stage, metadata, result.Output); err != nil {
-				logger.Printf("WARNING: %v", err)
-				logger.Printf("Stage %s output was: %s", stage.Name, result.Output)
-			} else {
-				logger.Printf("Stage %s metadata appended successfully", stage.Name)
-			}
-		}
-
-		if stage.HealthCheck != nil {
-			if err := runHealthCheck(ctx, client, stage, logger); err != nil {
-				_ = client.Close()
-				return err
-			}
-		}
-
-		if len(stage.Outputs) > 0 {
-			if err := collectStageOutputs(ctx, client, runDir, stage, logger); err != nil {
-				_ = client.Close()
-				return err
-			}
-		}
-
-		_ = client.Close()
 	}
 
 	return nil
+}
+
+func resolveStageHosts(stage config.Stage) []string {
+	if len(stage.Hosts) > 0 {
+		return stage.Hosts
+	}
+	if strings.TrimSpace(stage.Host) != "" {
+		return []string{stage.Host}
+	}
+	return []string{"local"}
 }
 
 func prepareStageCommand(ctx context.Context, stage config.Stage, host config.Host, runID string, client execution.ExecutionClient) (string, error) {
@@ -224,10 +248,10 @@ func prepareStageCommand(ctx context.Context, stage config.Stage, host config.Ho
 	return fmt.Sprintf("chmod +x '%s' && bash '%s'", remoteScriptPath, remoteScriptPath), nil
 }
 
-// startBackgroundStage starts a background stage by running the command in the background using nohup.
+// startBackgroundStage starts a background stage by running the command in a new process group.
 // this is kind of a hack but it makes it easier to monitor and implement them
 func startBackgroundStage(ctx context.Context, client execution.ExecutionClient, envPrefix, commandBody string, stage config.Stage) (string, error) {
-	backgroundCommand := fmt.Sprintf("%s nohup sh -c %s >/dev/null 2>&1 & echo $!", envPrefix, shellQuote(commandBody))
+	backgroundCommand := fmt.Sprintf("%s setsid sh -c %s >/dev/null 2>&1 & echo $!", envPrefix, shellQuote(commandBody))
 	result, err := client.RunCommand(ctx, execution.CommandRequest{Command: backgroundCommand})
 	if err != nil {
 		return "", fmt.Errorf("stage %s failed to start background command: %w", stage.Name, err)
@@ -303,11 +327,10 @@ func generatePlotsForRun(ctx context.Context, cfg *config.Config, runDir string,
 			if stage.Outputs == nil {
 				continue
 			}
+			hostAlias := resolveStageHosts(stage)[0]
 			for _, output := range stage.Outputs {
 				if output.Name == plt.Source {
-					// Extract extension from remote_path and construct filename as output.name + extension
-					ext := filepath.Ext(output.RemotePath)
-					filename := output.Name + ext
+					filename := outputFilename(output, stage, hostAlias)
 					dataSourcePath = filepath.Join(runDir, filename)
 					copy := output
 					matchedOutput = &copy
