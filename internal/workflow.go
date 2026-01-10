@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -42,7 +43,7 @@ func generateRunID(outputDir string) (string, error) {
 }
 
 // RunWorkflow executes a benchmark workflow with run ID tracking
-func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[string]string) {
+func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[string]string, envVars map[string]string) {
 	// Generate run ID and create run directory
 	runID, err := generateRunID(cfg.Benchmark.OutputDir)
 	if err != nil {
@@ -70,7 +71,7 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 
 	backgroundMgr := newBackgroundManager(logger)
 
-	stageErr := executeStages(ctx, cfg, runID, runDir, logger, logWriter, metadata, backgroundMgr)
+	stageErr := executeStages(ctx, cfg, runID, runDir, logger, logWriter, metadata, backgroundMgr, envVars)
 	stopErr := backgroundMgr.StopAll(ctx, runDir)
 	if stageErr != nil {
 		if stopErr != nil {
@@ -106,12 +107,13 @@ func executeStages(
 	logWriter io.Writer,
 	metadata *RunMetadata,
 	backgroundMgr *backgroundManager,
+	envVars map[string]string,
 ) error {
 	if len(cfg.Stages) == 0 {
 		return nil
 	}
 
-	envPrefix := buildEnvPrefix(runID, runDir, cfg)
+	envPrefix := buildEnvPrefix(runID, runDir, cfg, envVars)
 	consoleSink := resolveConsoleWriter()
 	stdoutSink := consoleSink
 	stderrSink := consoleSink
@@ -135,6 +137,8 @@ func executeStages(
 			_ = client.Close()
 			return err
 		}
+
+		commandBody = wrapWithShell(commandBody, resolveStageShell(cfg, stage))
 
 		if stage.Background {
 			pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
@@ -444,21 +448,51 @@ const (
 	EnvRunDir     = "BENCHCTL_RUN_DIR"
 	EnvConfigPath = "BENCHCTL_CONFIG_PATH"
 	EnvBenchctl   = "BENCHCTL_BIN"
+	DefaultShell  = "bash -lic"
 )
 
-func buildEnvPrefix(runID, runDir string, cfg *config.Config) string {
+func resolveStageShell(cfg *config.Config, stage config.Stage) string {
+	shell := strings.TrimSpace(stage.Shell)
+	if shell == "" {
+		shell = strings.TrimSpace(cfg.Benchmark.Shell)
+	}
+	if shell == "" {
+		shell = DefaultShell
+	}
+	return shell
+}
+
+func wrapWithShell(command, shell string) string {
+	shell = strings.TrimSpace(shell)
+	if shell == "" {
+		shell = DefaultShell
+	}
+	return fmt.Sprintf("%s %s", shell, shellQuote(command))
+}
+
+func buildEnvPrefix(runID, runDir string, cfg *config.Config, envVars map[string]string) string {
 	configPath := os.Getenv(EnvConfigPath)
 	exePath, _ := os.Executable()
 	exports := []string{
-		EnvRunID + "='" + runID + "'",
-		EnvOutputDir + "='" + cfg.Benchmark.OutputDir + "'",
-		EnvRunDir + "='" + runDir + "'",
+		EnvRunID + "=" + shellQuote(runID),
+		EnvOutputDir + "=" + shellQuote(cfg.Benchmark.OutputDir),
+		EnvRunDir + "=" + shellQuote(runDir),
 	}
 	if strings.TrimSpace(configPath) != "" {
-		exports = append(exports, EnvConfigPath+"='"+configPath+"'")
+		exports = append(exports, EnvConfigPath+"="+shellQuote(configPath))
 	}
 	if strings.TrimSpace(exePath) != "" {
-		exports = append(exports, EnvBenchctl+"='"+exePath+"'")
+		exports = append(exports, EnvBenchctl+"="+shellQuote(exePath))
+	}
+	if len(envVars) > 0 {
+		keys := make([]string, 0, len(envVars))
+		for key := range envVars {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			exports = append(exports, key+"="+shellQuote(envVars[key]))
+		}
 	}
 	return "export " + strings.Join(exports, " ") + "; "
 }

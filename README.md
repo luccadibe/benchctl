@@ -31,6 +31,9 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **Append Metadata from Stages**: Stages can emit JSON on stdout and append it to run metadata automatically
 - **Live Command Streaming**: Stage commands stream directly to your terminal with preserved ANSI colors locally and over SSH
 
+> **Note**: `benchctl` is under active development. There is currently **no commitment to API stability**. Features, flags, and file formats may change in future releases until I release v1.0.0.
+
+
 ## Installation
 
 ### Quick Install (Linux/macOS)
@@ -184,6 +187,9 @@ stages:
         remote_path: /tmp/metrics.csv
 ```
 
+#### Shell execution
+Stages run through a shell command. Set `benchmark.shell` to control it (default: `bash -lic`), which loads login + interactive environment (PATH, JAVA_HOME, etc). Override per stage with `stages[].shell`.
+
 Background stages run alongside the rest of the workflow. benchctl keeps them alive until the final non-background stage finishes, then sends SIGTERM, waits `BackgroundTerminationGrace` (2 seconds by default), and finally SIGKILL if they are still running. 
 Their outputs are collected after shutdown, so its ideal for monitoring tasks, like resource usage monitoring.
 Background stages cannot use `append_metadata`.
@@ -241,18 +247,13 @@ benchctl run --config benchmark.yaml
 # Add custom metadata
 benchctl run --config benchmark.yaml --metadata "someFeature"="true" --metadata "someOtherFeature"="false"
 
+# Pass environment variables to stages
+benchctl run --config benchmark.yaml -e BRANCH=main -e LG_MAX_RPS=2000
+
 # Inspect a run
 benchctl inspect <run-id>
-
-# Add some metadata to a run
-benchctl edit <run-id>  --metadata "hello"="world"
-
-# View help
-benchctl --help
-
-# Compare two runs
-benchctl compare <run-id1> <run-id2>
 ```
+
 
 ### Metadata
 
