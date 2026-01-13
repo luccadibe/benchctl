@@ -87,6 +87,8 @@ type Stage struct {
 	// If true, the command/script stdout is expected to be a JSON object whose
 	// keys/values will be appended to run metadata under .Custom
 	AppendMetadata bool `yaml:"append_metadata,omitempty" json:"append_metadata,omitempty"`
+	// Whether the stage should be skipped.
+	Skip bool `yaml:"skip,omitempty" json:"skip,omitempty"`
 	// Whether the stage should be ran in the background, allowing execution to continue with other stages.
 	// Stages running in the background will be sent a SIGTERM when the last non-background
 	// task is executed.
@@ -145,10 +147,18 @@ func validateConfig(cfg *Config) error {
 	// Always allow "local" as a valid host alias
 	hostAliases["local"] = struct{}{}
 
+	stageNames := map[string]int{}
 	for i := range cfg.Stages {
 		st := &cfg.Stages[i]
 		if strings.TrimSpace(st.Name) == "" {
 			errs = append(errs, fmt.Sprintf("stages[%d].name must be set", i))
+		} else {
+			name := strings.TrimSpace(st.Name)
+			if prevIndex, exists := stageNames[name]; exists {
+				errs = append(errs, fmt.Sprintf("stages[%d].name duplicates stages[%d] (%s)", i, prevIndex, name))
+			} else {
+				stageNames[name] = i
+			}
 		}
 		if st.Host != "" && len(st.Hosts) > 0 {
 			errs = append(errs, fmt.Sprintf("stages[%d] cannot set both host and hosts", i))

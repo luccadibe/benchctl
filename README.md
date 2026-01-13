@@ -159,7 +159,7 @@ hosts:
 ```
 
 ### Stages
-Sequential workflow steps:
+Stages are sequential workflow steps, they are executed in the order they are defined and they must have a unique name.
 
 ```yaml
 stages:
@@ -203,6 +203,11 @@ stages:
     hosts: [vm1, vm2]
     command: uname -a
 ```
+
+#### Skipping stages
+- Set `stages[].skip: true` to skip a stage.
+- Or pass `benchctl run --skip <stage-name>` multiple times (CLI overrides config).
+- The `metadata.json` that is stored in each run directory will contain the exact stages that were executed, so you can easily see which stages were executed and which were skipped.
 
 Background stages run alongside the rest of the workflow. benchctl keeps them alive until the final non-background stage finishes, then sends SIGTERM to the stage's process group, waits `BackgroundTerminationGrace` (2 seconds by default), and finally SIGKILL if they are still running.
 This uses `setsid` to start a new process group, so the entire background task tree is terminated reliably.
@@ -258,6 +263,9 @@ plots:
 ```bash
 # Run benchmark
 benchctl run --config benchmark.yaml
+
+# Skip stages by name
+benchctl run --config benchmark.yaml --skip setup --skip warmup
 
 # Add custom metadata
 benchctl run --config benchmark.yaml --metadata "someFeature"="true" --metadata "someOtherFeature"="false"

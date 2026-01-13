@@ -121,6 +121,10 @@ func executeStages(
 	logStageOutput := consoleSink == nil || !writersReferToSameFD(consoleSink, logWriter)
 
 	for i, stage := range cfg.Stages {
+		if stage.Skip {
+			logger.Printf("Skipping stage: %d/%d %s", i+1, len(cfg.Stages), stage.Name)
+			continue
+		}
 		logger.Printf("Executing stage: %d/%d %s", i+1, len(cfg.Stages), stage.Name)
 		hostAliases := resolveStageHosts(stage)
 		for hostIndex, hostAlias := range hostAliases {

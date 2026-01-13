@@ -115,6 +115,28 @@ stages:
 	}
 }
 
+func TestStageNameUnique(t *testing.T) {
+	yaml := `
+benchmark:
+  name: duplicate
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    command: echo hello
+  - name: run
+    command: echo again
+`
+	_, err := ParseYAML([]byte(yaml))
+	if err == nil {
+		t.Fatalf("expected error for duplicate stage names")
+	}
+	if !strings.Contains(err.Error(), "duplicates") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestLoadConfig_BadHealthCheck validates error messages for invalid healthcheck configuration.
 func TestLoadConfig_BadHealthCheck(t *testing.T) {
 	cfgPath := filepath.Join("testdata", "3.yaml")
