@@ -45,6 +45,10 @@ var environmentFlag = &cli.StringSliceFlag{
 	Usage:   "Environment variable in the format 'KEY=VALUE' (can be used multiple times)",
 	Aliases: []string{"e"},
 }
+var skipFlag = &cli.StringSliceFlag{
+	Name:  "skip",
+	Usage: "Skip stages by name (can be used multiple times)",
+}
 var uiAddrFlag = &cli.StringFlag{
 	Name:  "addr",
 	Usage: "Address to serve the UI (host:port)",
@@ -72,6 +76,11 @@ func main() {
 					}
 					cfg, err := parseConfig(cfgFile)
 					if err != nil {
+						return err
+					}
+
+					skipStages := cmd.StringSlice(skipFlag.Name)
+					if err := applySkipFlags(cfg, skipStages); err != nil {
 						return err
 					}
 
@@ -103,6 +112,7 @@ func main() {
 				Flags: []cli.Flag{
 					metadataFlag,
 					environmentFlag,
+					skipFlag,
 					timeoutFlag,
 				},
 			},
@@ -306,4 +316,38 @@ func parseEnvironment(entries []string) (map[string]string, error) {
 		envVars[key] = parts[1]
 	}
 	return envVars, nil
+}
+
+func applySkipFlags(cfg *config.Config, skipStages []string) error {
+	if len(skipStages) == 0 {
+		return nil
+	}
+
+	stageNames := make(map[string]int, len(cfg.Stages))
+	for i, stage := range cfg.Stages {
+		name := strings.TrimSpace(stage.Name)
+		if name == "" {
+			continue
+		}
+		stageNames[name] = i
+	}
+
+	skipSet := make(map[string]struct{}, len(skipStages))
+	for _, stageName := range skipStages {
+		name := strings.TrimSpace(stageName)
+		if name == "" {
+			return fmt.Errorf("skip stage name must be non-empty")
+		}
+		skipSet[name] = struct{}{}
+	}
+
+	for name := range skipSet {
+		index, ok := stageNames[name]
+		if !ok {
+			return fmt.Errorf("unknown stage for --skip: %s", name)
+		}
+		cfg.Stages[index].Skip = true
+	}
+
+	return nil
 }
