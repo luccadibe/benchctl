@@ -1,0 +1,11 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(31, 158, 143, 0.12);
+  color: var(--accent);
+  font-weight: 600;
+}

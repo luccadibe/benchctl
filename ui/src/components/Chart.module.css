@@ -1,0 +1,10 @@
+.chart {
+  min-height: 320px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px dashed rgba(31, 33, 35, 0.12);
+}
+
+.small {
+  min-height: 220px;
+}

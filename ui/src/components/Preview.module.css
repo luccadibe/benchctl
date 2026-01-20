@@ -1,0 +1,8 @@
+.preview {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 16px;
+  overflow: auto;
+  max-height: 360px;
+}

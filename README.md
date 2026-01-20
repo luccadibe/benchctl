@@ -188,7 +188,8 @@ stages:
 ```
 
 #### Shell execution
-Stages run through a shell command. Set `benchmark.shell` to control it (default: `bash -lic`), which loads login + interactive environment (PATH, JAVA_HOME, etc). Override per stage with `stages[].shell`.
+Stages run through a shell command. Set `benchmark.shell` to control it (the default is `bash -lic`), which loads login + interactive environment (PATH, JAVA_HOME, etc). Override per stage with `stages[].shell`.
+> **Note:** You cannot pass arguments to a script like `script.sh <args>`. Use `command` instead.
 
 #### Hosts and multi-host stages
 - Use `host` for a single host or `hosts` for multiple hosts. If neither is set, the stage runs on `local`.
@@ -329,7 +330,6 @@ See the [`examples/`](examples/) directory for complete benchmark configurations
 ## Roadmap
 
 - [ ] Add a local Web UI for viewing benchmark results and plots.
-- [ ] Maybe add support for data analysis? Might be too much.
 
 
 ## License
