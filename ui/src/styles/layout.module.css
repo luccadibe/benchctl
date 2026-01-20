@@ -1,0 +1,39 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.grid {
+  display: grid;
+  gap: 18px;
+}
+
+.gridTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gridThree {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+@media (max-width: 980px) {
+  .gridTwo,
+  .gridThree {
+    grid-template-columns: 1fr;
+  }
+}

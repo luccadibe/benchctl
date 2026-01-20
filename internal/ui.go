@@ -42,7 +42,6 @@ type runDetailResponse struct {
 type uiServer struct {
 	outputDir string
 	assets    fs.FS
-	static    http.Handler
 }
 
 func ServeUI(addr, outputDir string) error {
@@ -58,7 +57,6 @@ func ServeUI(addr, outputDir string) error {
 	server := &uiServer{
 		outputDir: outputDir,
 		assets:    assets,
-		static:    http.FileServer(http.FS(assets)),
 	}
 
 	mux := http.NewServeMux()
@@ -251,21 +249,46 @@ func (s *uiServer) serveStatic(w http.ResponseWriter, r *http.Request) {
 		s.serveIndex(w)
 		return
 	}
-	if info, err := fs.Stat(s.assets, requestPath); err == nil && !info.IsDir() {
-		s.static.ServeHTTP(w, r)
+	if path.Ext(requestPath) != "" {
+		if s.serveGzipAsset(w, requestPath) {
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+	if s.serveGzipAsset(w, requestPath) {
 		return
 	}
 	s.serveIndex(w)
 }
 
 func (s *uiServer) serveIndex(w http.ResponseWriter) {
-	data, err := fs.ReadFile(s.assets, "index.html")
+	data, err := fs.ReadFile(s.assets, "index.html.gz")
 	if err != nil {
 		http.Error(w, "ui index not found", http.StatusNotFound)
 		return
 	}
+	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(data)
+}
+
+func (s *uiServer) serveGzipAsset(w http.ResponseWriter, requestPath string) bool {
+	gzipPath := requestPath + ".gz"
+	info, err := fs.Stat(s.assets, gzipPath)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	data, err := fs.ReadFile(s.assets, gzipPath)
+	if err != nil {
+		return false
+	}
+	if contentType := mime.TypeByExtension(path.Ext(requestPath)); contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	_, _ = w.Write(data)
+	return true
 }
 
 func writeJSON(w http.ResponseWriter, payload any) {

@@ -1,0 +1,80 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.topbar {
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brandTitle {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.brandSub {
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navLink {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.navLinkActive {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 8px 20px rgba(31, 33, 35, 0.08);
+}
+
+.main {
+  flex: 1;
+  padding: 0 32px 48px 32px;
+}
+
+@media (max-width: 980px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .topActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .main {
+    padding: 0 20px 40px 20px;
+  }
+}
