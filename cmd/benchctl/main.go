@@ -234,6 +234,31 @@ func main() {
 					return nil
 				},
 			},
+			// sync
+			{
+				Name:  "sync",
+				Usage: "Sync benchmark results using rclone",
+				Commands: []*cli.Command{
+					{
+						Name:  "push",
+						Usage: "Push benchmark results to benchmark.sync.remote",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							cfgFile := cmd.String(configFlag.Name)
+							if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
+								cfgFile = env
+							}
+							cfg, err := parseConfig(cfgFile)
+							if err != nil {
+								return err
+							}
+							return internal.SyncResults(ctx, cfg)
+						},
+						Flags: []cli.Flag{
+							configFlag,
+						},
+					},
+				},
+			},
 		},
 	}
 

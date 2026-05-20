@@ -39,6 +39,13 @@ func WithGit(git GitConfig) Option {
 	}
 }
 
+// WithSync sets the benchmark sync configuration.
+func WithSync(sync SyncConfig) Option {
+	return func(cfg *Config) {
+		cfg.Benchmark.Sync = &sync
+	}
+}
+
 // Bool returns a pointer to value for optional config booleans.
 func Bool(value bool) *bool {
 	return &value

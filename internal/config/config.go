@@ -42,6 +42,8 @@ type Benchmark struct {
 	Logging *LoggingConfig `yaml:"logging,omitempty" json:"logging,omitempty"`
 	// Git controls automatic repository metadata capture.
 	Git *GitConfig `yaml:"git,omitempty" json:"git,omitempty"`
+	// Sync controls optional result sync via rclone.
+	Sync *SyncConfig `yaml:"sync,omitempty" json:"sync,omitempty"`
 }
 
 // LoggingConfig holds the logging configuration. If no path is provided, logs are written to stdout.
@@ -55,6 +57,12 @@ type GitConfig struct {
 	Capture      *bool `yaml:"capture,omitempty" json:"capture,omitempty"`
 	RequireClean bool  `yaml:"require_clean,omitempty" json:"require_clean,omitempty"`
 	SavePatch    bool  `yaml:"save_patch,omitempty" json:"save_patch,omitempty"`
+}
+
+// SyncConfig holds result synchronization settings.
+type SyncConfig struct {
+	Remote string   `yaml:"remote" json:"remote"`
+	Args   []string `yaml:"args,omitempty" json:"args,omitempty"`
 }
 
 // DataSchema defines the schema for structured data outputs (e.g., CSV files).
@@ -148,6 +156,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if strings.TrimSpace(cfg.Benchmark.OutputDir) == "" {
 		errs = append(errs, "benchmark.output_dir must be set")
+	}
+	if cfg.Benchmark.Sync != nil && strings.TrimSpace(cfg.Benchmark.Sync.Remote) == "" {
+		errs = append(errs, "benchmark.sync.remote must be set")
 	}
 
 	// hosts: allow empty for local only
