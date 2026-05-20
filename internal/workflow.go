@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -71,13 +71,12 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 		Custom:        customMetadata,
 	}
 
-	logger, logWriter, closeLogger, err := createLogger(cfg)
+	logger, logWriter, closeLogger, err := createLogger(cfg, runDir)
 	if err != nil {
 		return nil, err
 	}
 	defer closeLogger()
-	logger.Printf("Run ID: %s", runID)
-	logger.Printf("Results will be saved to: %s", runDir)
+	logger.Info("run started", "run_id", runID, "run_dir", runDir)
 
 	backgroundMgr := newBackgroundManager(logger)
 
@@ -85,7 +84,7 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	stopErr := backgroundMgr.StopAll(ctx, runDir)
 	if stageErr != nil {
 		if stopErr != nil {
-			logger.Printf("ERROR stopping background stages: %v", stopErr)
+			logErrorf(logger, "stopping background stages: %v", stopErr)
 		}
 		return nil, fmt.Errorf("workflow failed: %w", errors.Join(stageErr, stopErr))
 	}
@@ -98,8 +97,7 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 		return nil, err
 	}
 
-	logger.Printf("Workflow completed successfully!")
-	logger.Printf("Results saved to: %s", runDir)
+	logger.Info("workflow completed", "run_id", runID, "run_dir", runDir)
 	return &RunResult{RunID: runID, RunDir: runDir, Metadata: metadata}, nil
 }
 
@@ -110,7 +108,7 @@ func executeStages(
 	ctx context.Context,
 	cfg *config.Config,
 	runID, runDir string,
-	logger *log.Logger,
+	logger *slog.Logger,
 	logWriter io.Writer,
 	metadata *RunMetadata,
 	backgroundMgr *backgroundManager,
@@ -129,10 +127,10 @@ func executeStages(
 
 	for i, stage := range cfg.Stages {
 		if stage.Skip {
-			logger.Printf("Skipping stage: %d/%d %s", i+1, len(cfg.Stages), stage.Name)
+			logger.Info("stage skipped", "stage", stage.Name, "index", i+1, "total", len(cfg.Stages))
 			continue
 		}
-		logger.Printf("Executing stage: %d/%d %s", i+1, len(cfg.Stages), stage.Name)
+		logger.Info("stage started", "stage", stage.Name, "index", i+1, "total", len(cfg.Stages))
 		hostAliases := resolveStageHosts(stage)
 		for hostIndex, hostAlias := range hostAliases {
 			host, ok := cfg.Hosts[hostAlias]
@@ -163,7 +161,7 @@ func executeStages(
 					return err
 				}
 				backgroundMgr.Add(backgroundStage{stage: stage, hostAlias: hostAlias, host: host, pid: pid})
-				logger.Printf("Stage %s is running in background", stage.Name)
+				logger.Info("stage running in background", "stage", stage.Name)
 				continue
 			}
 
@@ -178,27 +176,26 @@ func executeStages(
 			}
 			if err != nil {
 				if logStageOutput && strings.TrimSpace(result.Output) != "" {
-					logger.Printf("Stage %s captured output:\n%s", stage.Name, result.Output)
+					logger.Info("stage captured output", "stage", stage.Name, "output", result.Output)
 				}
 				_ = client.Close()
 				return fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
 			}
 
 			if logStageOutput {
-				logger.Printf("Stage %s output: %s", stage.Name, result.Output)
+				logger.Info("stage output", "stage", stage.Name, "output", result.Output)
 			}
-			logger.Printf("Stage %s completed (exit code: %d)", stage.Name, result.ExitCode)
+			logger.Info("stage completed", "stage", stage.Name, "exit_code", result.ExitCode)
 
 			if stage.AppendMetadata {
 				if hostIndex == 0 {
 					if len(hostAliases) > 1 {
-						logger.Printf("WARNING: stage %s append_metadata enabled with multiple hosts; only first host will be used", stage.Name)
+						logger.Warn("append_metadata with multiple hosts uses only first host", "stage", stage.Name)
 					}
 					if err := appendStageMetadata(stage, metadata, result.Output); err != nil {
-						logger.Printf("WARNING: %v", err)
-						logger.Printf("Stage %s output was: %s", stage.Name, result.Output)
+						logger.Warn("append metadata failed", "stage", stage.Name, "error", err, "output", result.Output)
 					} else {
-						logger.Printf("Stage %s metadata appended successfully", stage.Name)
+						logger.Info("stage metadata appended", "stage", stage.Name)
 					}
 				}
 			}
@@ -300,13 +297,13 @@ func appendStageMetadata(stage config.Stage, metadata *RunMetadata, output strin
 }
 
 // runHealthCheck runs the health check for a stage.
-func runHealthCheck(ctx context.Context, client execution.ExecutionClient, stage config.Stage, logger *log.Logger) error {
+func runHealthCheck(ctx context.Context, client execution.ExecutionClient, stage config.Stage, logger *slog.Logger) error {
 	hc := stage.HealthCheck
 	timeout, err := time.ParseDuration(hc.Timeout)
 	if err != nil {
 		return fmt.Errorf("error parsing health check timeout for stage %s: %w", stage.Name, err)
 	}
-	logger.Printf("Running health check: %s", hc.Type)
+	logger.Info("health check started", "stage", stage.Name, "type", hc.Type)
 	switch hc.Type {
 	case "port":
 		healthy, err := CallWithRetry(ctx, func() (bool, error) {
@@ -318,7 +315,7 @@ func runHealthCheck(ctx context.Context, client execution.ExecutionClient, stage
 		if !healthy {
 			return fmt.Errorf("health check for stage %s failed: port %s is not listening", stage.Name, hc.Target)
 		}
-		logger.Printf("Health check for stage %s passed: port %s is listening", stage.Name, hc.Target)
+		logger.Info("health check passed", "stage", stage.Name, "type", hc.Type, "target", hc.Target)
 	default:
 		return fmt.Errorf("unknown health check type for stage %s: %s", stage.Name, hc.Type)
 	}
@@ -347,20 +344,42 @@ func parsePID(output string) string {
 }
 
 // createLogger creates a logger based on the logging configuration and returns a logger, a writer, and a function to close the writer.
-func createLogger(cfg *config.Config) (*log.Logger, io.Writer, func(), error) {
+func createLogger(cfg *config.Config, runDir string) (*slog.Logger, io.Writer, func(), error) {
+	level := slog.LevelInfo
 	if cfg.Benchmark.Logging != nil {
-		if cfg.Benchmark.Logging.Path != "" {
-			file, err := os.Create(cfg.Benchmark.Logging.Path)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("create log file: %w", err)
-			}
-			return log.New(file, "", log.LstdFlags), file, func() {
-				_ = file.Close()
-			}, nil
+		switch strings.ToLower(strings.TrimSpace(cfg.Benchmark.Logging.Level)) {
+		case "debug":
+			level = slog.LevelDebug
+		case "warn", "warning":
+			level = slog.LevelWarn
+		case "error":
+			level = slog.LevelError
 		}
 	}
-	stdout := os.Stdout
-	return log.New(stdout, "", log.LstdFlags), stdout, func() {}, nil
+	levelVar := new(slog.LevelVar)
+	levelVar.Set(level)
+
+	console := os.Stdout
+	color := term.IsTerminal(int(console.Fd()))
+	handlers := []slog.Handler{newConsoleHandler(console, levelVar, color)}
+	closeFunc := func() {}
+	logWriter := io.Writer(console)
+
+	logPath := filepath.Join(runDir, "benchctl.ndjson")
+	if cfg.Benchmark.Logging != nil {
+		if strings.TrimSpace(cfg.Benchmark.Logging.Path) != "" {
+			logPath = cfg.Benchmark.Logging.Path
+		}
+	}
+	file, err := os.Create(logPath)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("create log file: %w", err)
+	}
+	handlers = append(handlers, slog.NewJSONHandler(file, &slog.HandlerOptions{Level: levelVar}))
+	closeFunc = func() { _ = file.Close() }
+	logWriter = file
+
+	return slog.New(slog.NewMultiHandler(handlers...)), logWriter, closeFunc, nil
 }
 
 // saveMetadata saves the metadata to a file

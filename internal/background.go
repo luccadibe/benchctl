@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -29,11 +29,11 @@ type backgroundStage struct {
 
 // backgroundManager coordinates background stages
 type backgroundManager struct {
-	logger *log.Logger
+	logger *slog.Logger
 	stages []backgroundStage
 }
 
-func newBackgroundManager(logger *log.Logger) *backgroundManager {
+func newBackgroundManager(logger *slog.Logger) *backgroundManager {
 	return &backgroundManager{logger: logger}
 }
 
@@ -56,7 +56,7 @@ func (m *backgroundManager) StopAll(ctx context.Context, runDir string) error {
 }
 
 func (m *backgroundManager) stopStage(ctx context.Context, runDir string, record backgroundStage) error {
-	m.logger.Printf("Stopping background stage %s (PID %s)", record.stage.Name, record.pid)
+	m.logger.Info("stopping background stage", "stage", record.stage.Name, "pid", record.pid)
 
 	client, err := openExecutionClient(record.host)
 	if err != nil {
@@ -70,7 +70,7 @@ func (m *backgroundManager) stopStage(ctx context.Context, runDir string, record
 
 	if len(record.stage.Outputs) > 0 {
 		if err := collectStageOutputs(ctx, client, runDir, record.stage, m.logger, record.hostAlias); err != nil {
-			m.logger.Printf("WARNING: background stage %s outputs failed to collect: %v", record.stage.Name, err)
+			m.logger.Warn("background stage outputs failed to collect", "stage", record.stage.Name, "error", err)
 		}
 	}
 
@@ -78,7 +78,7 @@ func (m *backgroundManager) stopStage(ctx context.Context, runDir string, record
 }
 
 // terminatePID sends a SIGTERM to the process and waits for it to exit.
-func terminatePID(ctx context.Context, client execution.ExecutionClient, stageName, pid string, logger *log.Logger) error {
+func terminatePID(ctx context.Context, client execution.ExecutionClient, stageName, pid string, logger *slog.Logger) error {
 	termCmd := fmt.Sprintf("kill -TERM -%s >/dev/null 2>&1 || true", pid)
 	_, _ = client.RunCommand(ctx, execution.CommandRequest{Command: termCmd, DisableCapture: true})
 
@@ -97,7 +97,7 @@ func terminatePID(ctx context.Context, client execution.ExecutionClient, stageNa
 		killCmd := fmt.Sprintf("kill -KILL -%s >/dev/null 2>&1 || true", pid)
 		_, _ = client.RunCommand(ctx, execution.CommandRequest{Command: killCmd, DisableCapture: true})
 		if err := waitForExit(ctx, client, pid); err != nil {
-			logger.Printf("WARNING: background stage %s still running: %v", stageName, err)
+			logger.Warn("background stage still running", "stage", stageName, "error", err)
 		}
 	}
 
@@ -162,7 +162,7 @@ func outputFilename(output config.Output, stage config.Stage, hostAlias string) 
 	return filename
 }
 
-func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, runDir string, stage config.Stage, logger *log.Logger, hostAlias string) error {
+func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, runDir string, stage config.Stage, logger *slog.Logger, hostAlias string) error {
 	for _, output := range stage.Outputs {
 		remotePath := output.RemotePath
 		filename := outputFilename(output, stage, hostAlias)
@@ -170,11 +170,11 @@ func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, 
 		if err := client.Scp(ctx, remotePath, localPath); err != nil {
 			return fmt.Errorf("failed to collect output %s for stage %s: %w", output.Name, stage.Name, err)
 		}
-		logger.Printf("Collected output %s: %s -> %s", output.Name, remotePath, localPath)
+		logger.Info("output collected", "output", output.Name, "remote_path", remotePath, "local_path", localPath)
 		if output.DataSchema != nil {
 			for _, col := range output.DataSchema.Columns {
 				if col.Type == config.DataTypeTimestamp && strings.TrimSpace(col.Format) == "" {
-					logger.Printf("WARNING: data_schema.%s has type=timestamp without format; falling back to auto-detection which may be slower/ambiguous", col.Name)
+					logger.Warn("timestamp column has no format", "column", col.Name)
 				}
 			}
 		}
