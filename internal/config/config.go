@@ -9,7 +9,6 @@ import (
 	_ "embed"
 
 	"github.com/goccy/go-yaml"
-	"github.com/luccadibe/benchctl/internal/plot"
 )
 
 // DataType represents allowed CSV column data types in configuration.
@@ -28,7 +27,6 @@ type Config struct {
 	Benchmark Benchmark       `yaml:"benchmark" json:"benchmark"`
 	Hosts     map[string]Host `yaml:"hosts" json:"hosts"`
 	Stages    []Stage         `yaml:"stages" json:"stages"`
-	Plots     []plot.Plot     `yaml:"plots,omitempty" json:"plots,omitempty"`
 }
 
 // Benchmark holds top-level benchmark metadata.
@@ -259,7 +257,7 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	// Collect all output names for plot validation and uniqueness check
+	// Collect all output names for uniqueness checks.
 	outputNames := map[string][]int{} // map from output name to stage indices
 	for i, stage := range cfg.Stages {
 		for _, output := range stage.Outputs {
@@ -273,62 +271,6 @@ func validateConfig(cfg *Config) error {
 	for name, stageIndices := range outputNames {
 		if len(stageIndices) > 1 {
 			errs = append(errs, fmt.Sprintf("output name '%s' is not unique; found in stages: %v", name, stageIndices))
-		}
-	}
-
-	// Validate plots
-	for i := range cfg.Plots {
-		plot := &cfg.Plots[i]
-		if strings.TrimSpace(plot.Name) == "" {
-			errs = append(errs, fmt.Sprintf("plots[%d].name must be set", i))
-		}
-		if strings.TrimSpace(plot.Source) == "" {
-			errs = append(errs, fmt.Sprintf("plots[%d].source must be set", i))
-		} else if _, exists := outputNames[plot.Source]; !exists {
-			errs = append(errs, fmt.Sprintf("plots[%d].source references unknown output '%s'", i, plot.Source))
-		}
-		if strings.TrimSpace(plot.Type) != "" {
-			switch plot.Type {
-			case "time_series", "histogram", "boxplot":
-				// ok
-			default:
-				errs = append(errs, fmt.Sprintf("plots[%d].type must be one of [time_series, histogram, boxplot]", i))
-			}
-		}
-		if strings.TrimSpace(plot.Aggregation) != "" {
-			switch plot.Aggregation {
-			case "avg", "median", "p95", "p99":
-				// ok
-			default:
-				errs = append(errs, fmt.Sprintf("plots[%d].aggregation must be one of [avg, median, p95, p99]", i))
-			}
-		}
-		if strings.TrimSpace(plot.Format) != "" {
-			switch plot.Format {
-			case "png", "svg", "pdf":
-				// ok
-			default:
-				errs = append(errs, fmt.Sprintf("plots[%d].format must be one of [png, svg, pdf]", i))
-			}
-		}
-		engine := strings.TrimSpace(plot.Engine)
-		if engine != "" {
-			switch engine {
-			case "gonum", "seaborn":
-				// ok
-			default:
-				errs = append(errs, fmt.Sprintf("plots[%d].engine must be one of [gonum, seaborn]", i))
-			}
-		} else {
-			plot.Engine = "seaborn" // default to seaborn
-			engine = "seaborn"
-		}
-		if strings.TrimSpace(plot.GroupBy) != "" && engine == "gonum" {
-			errs = append(errs, fmt.Sprintf("plots[%d].groupby is only supported with the seaborn engine", i))
-		}
-		if strings.TrimSpace(plot.ExportPath) != "" {
-			// TODO remove this, schema handles this
-			errs = append(errs, fmt.Sprintf("plots[%d].export_path is not allowed; plots are stored directly in the run directory using plot.name", i))
 		}
 	}
 

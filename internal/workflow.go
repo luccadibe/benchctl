@@ -14,7 +14,6 @@ import (
 
 	"github.com/luccadibe/benchctl/internal/config"
 	"github.com/luccadibe/benchctl/internal/execution"
-	"github.com/luccadibe/benchctl/internal/plot"
 	"golang.org/x/term"
 )
 
@@ -81,10 +80,6 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	}
 	if stopErr != nil {
 		logger.Fatalf("failed to stop background stages: %v", stopErr)
-	}
-
-	if err := generatePlotsForRun(ctx, cfg, runDir, logger); err != nil {
-		logger.Fatalf("%v", err)
 	}
 
 	metadata.EndTime = time.Now()
@@ -315,88 +310,6 @@ func runHealthCheck(ctx context.Context, client execution.ExecutionClient, stage
 	default:
 		return fmt.Errorf("unknown health check type for stage %s: %s", stage.Name, hc.Type)
 	}
-	return nil
-}
-
-func generatePlotsForRun(ctx context.Context, cfg *config.Config, runDir string, logger *log.Logger) error {
-	if len(cfg.Plots) == 0 {
-		return nil
-	}
-
-	for _, plt := range cfg.Plots {
-		logger.Printf("Generating plot: %s", plt.Name)
-		var dataSourcePath string
-		var matchedOutput *config.Output
-		for _, stage := range cfg.Stages {
-			if stage.Outputs == nil {
-				continue
-			}
-			hostAlias := resolveStageHosts(stage)[0]
-			for _, output := range stage.Outputs {
-				if output.Name == plt.Source {
-					filename := outputFilename(output, stage, hostAlias)
-					dataSourcePath = filepath.Join(runDir, filename)
-					copy := output
-					matchedOutput = &copy
-					break
-				}
-			}
-			if dataSourcePath != "" {
-				break
-			}
-		}
-
-		if dataSourcePath == "" {
-			return fmt.Errorf("plot %s references unknown output %s", plt.Name, plt.Source)
-		}
-
-		// Construct plot filename as plot.Name + "." + plot.Format
-		plotFormat := plt.Format
-		if plotFormat == "" {
-			plotFormat = "png"
-		}
-		plotExportPath := filepath.Join(runDir, plt.Name+"."+plotFormat)
-
-		if absData, err := filepath.Abs(dataSourcePath); err == nil {
-			dataSourcePath = absData
-		}
-		if absExport, err := filepath.Abs(plotExportPath); err == nil {
-			plotExportPath = absExport
-		}
-
-		plotToRender := plt
-		if (plt.Engine == "" || plt.Engine == "seaborn") && matchedOutput != nil && matchedOutput.DataSchema != nil {
-			for _, col := range matchedOutput.DataSchema.Columns {
-				if col.Name == plt.X && col.Type == config.DataTypeTimestamp {
-					if plotToRender.Options == nil {
-						plotToRender.Options = map[string]any{}
-					}
-					if strings.TrimSpace(col.Format) != "" {
-						plotToRender.Options["x_time_format"] = strings.ToLower(col.Format)
-					}
-					if strings.TrimSpace(col.Unit) != "" {
-						plotToRender.Options["x_time_unit"] = strings.ToLower(col.Unit)
-					}
-					break
-				}
-			}
-		}
-
-		var plotter plot.Plotter
-		switch plt.Engine {
-		case "", "seaborn":
-			plotter = plot.NewSeabornPlotter()
-		case "gonum":
-			plotter = plot.NewGonumPlotter()
-		default:
-			return fmt.Errorf("unknown plot engine: %s", plt.Engine)
-		}
-
-		if err := plotter.GeneratePlot(ctx, plotToRender, dataSourcePath, plotExportPath); err != nil {
-			return fmt.Errorf("failed to generate plot %s: %w", plt.Name, err)
-		}
-	}
-
 	return nil
 }
 
