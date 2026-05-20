@@ -46,6 +46,9 @@ func AddMetadata(runPath string, extraMetadata map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("error loading run metadata: %w", err)
 	}
+	if runmd.Custom == nil {
+		runmd.Custom = map[string]string{}
+	}
 	maps.Copy(runmd.Custom, extraMetadata)
 	metadataBytes, err := json.MarshalIndent(runmd, "", "  ")
 	if err != nil {

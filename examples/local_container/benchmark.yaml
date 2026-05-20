@@ -88,9 +88,3 @@ stages:
       docker stop local-container-server || true
       docker rm local-container-server || true
       echo "Container cleaned up successfully"
-
-  - name: analyse_csv
-    host: local
-    command: |
-      uv run ./scripts/analyse_csv.py
-    append_metadata: true

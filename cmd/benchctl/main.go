@@ -164,10 +164,10 @@ func main() {
 					configFlag,
 				},
 			},
-			// edit
+			// annotate
 			{
-				Name:  "edit",
-				Usage: "Edit a benchmark run's metadata",
+				Name:  "annotate",
+				Usage: "Annotate a completed benchmark run's metadata",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfgFile := cmd.String(configFlag.Name)
 					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
@@ -191,7 +191,7 @@ func main() {
 					if err != nil {
 						return err
 					}
-					fmt.Println("Metadata edited successfully")
+					fmt.Println("Run annotated successfully")
 					return nil
 				},
 				Flags: []cli.Flag{
