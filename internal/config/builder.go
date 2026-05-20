@@ -32,6 +32,18 @@ func WithLogging(logging LoggingConfig) Option {
 	}
 }
 
+// WithGit sets the benchmark git metadata capture configuration.
+func WithGit(git GitConfig) Option {
+	return func(cfg *Config) {
+		cfg.Benchmark.Git = &git
+	}
+}
+
+// Bool returns a pointer to value for optional config booleans.
+func Bool(value bool) *bool {
+	return &value
+}
+
 // WithHost adds or replaces a host alias.
 func WithHost(alias string, host Host) Option {
 	return func(cfg *Config) {

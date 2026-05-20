@@ -12,6 +12,7 @@ type (
 	Config        = config.Config
 	Benchmark     = config.Benchmark
 	LoggingConfig = config.LoggingConfig
+	GitConfig     = config.GitConfig
 	Host          = config.Host
 	Stage         = config.Stage
 	HealthCheck   = config.HealthCheck
@@ -36,6 +37,7 @@ var (
 	NewConfig       = config.New
 	WithShell       = config.WithShell
 	WithLogging     = config.WithLogging
+	WithGit         = config.WithGit
 	WithHost        = config.WithHost
 	WithStage       = config.WithStage
 	SSHHost         = config.SSHHost
@@ -54,6 +56,7 @@ var (
 	Column          = config.Column
 	Unit            = config.Unit
 	TimeFormat      = config.TimeFormat
+	Bool            = config.Bool
 )
 
 // ParseYAML parses and validates a YAML benchmark configuration.
