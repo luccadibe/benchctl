@@ -85,7 +85,7 @@ func TestCollectStageOutputsMultiHostSuffix(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ctx := context.Background()
-	if err := collectStageOutputs(ctx, client, runDir, stage, logger, "host-a"); err != nil {
+	if err := collectStageOutputs(ctx, client, runDir, stage, logger, "host-a", ""); err != nil {
 		t.Fatalf("collectStageOutputs failed: %v", err)
 	}
 

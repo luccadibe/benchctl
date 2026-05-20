@@ -24,6 +24,7 @@ type backgroundStage struct {
 	stage     config.Stage
 	hostAlias string
 	host      config.Host
+	caseName  string
 	pid       string
 }
 
@@ -69,7 +70,7 @@ func (m *backgroundManager) stopStage(ctx context.Context, runDir string, record
 	}
 
 	if len(record.stage.Outputs) > 0 {
-		if err := collectStageOutputs(ctx, client, runDir, record.stage, m.logger, record.hostAlias); err != nil {
+		if err := collectStageOutputs(ctx, client, runDir, record.stage, m.logger, record.hostAlias, record.caseName); err != nil {
 			m.logger.Warn("background stage outputs failed to collect", "stage", record.stage.Name, "error", err)
 		}
 	}
@@ -153,19 +154,22 @@ func openExecutionClient(host config.Host) (execution.ExecutionClient, error) {
 	return execution.NewSSHClient(host)
 }
 
-func outputFilename(output config.Output, stage config.Stage, hostAlias string) string {
+func outputFilename(output config.Output, stage config.Stage, hostAlias, caseName string) string {
 	ext := filepath.Ext(output.RemotePath)
 	filename := output.Name + ext
+	if strings.TrimSpace(caseName) != "" {
+		filename = caseName + "__" + filename
+	}
 	if len(stage.Hosts) > 0 {
-		filename = output.Name + "__" + hostAlias + ext
+		filename = strings.TrimSuffix(filename, ext) + "__" + hostAlias + ext
 	}
 	return filename
 }
 
-func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, runDir string, stage config.Stage, logger *slog.Logger, hostAlias string) error {
+func collectStageOutputs(ctx context.Context, client execution.ExecutionClient, runDir string, stage config.Stage, logger *slog.Logger, hostAlias, caseName string) error {
 	for _, output := range stage.Outputs {
 		remotePath := output.RemotePath
-		filename := outputFilename(output, stage, hostAlias)
+		filename := outputFilename(output, stage, hostAlias, caseName)
 		localPath := filepath.Join(runDir, filename)
 		if err := client.Scp(ctx, remotePath, localPath); err != nil {
 			return fmt.Errorf("failed to collect output %s for stage %s: %w", output.Name, stage.Name, err)
