@@ -13,6 +13,7 @@ type (
 	Benchmark     = config.Benchmark
 	LoggingConfig = config.LoggingConfig
 	GitConfig     = config.GitConfig
+	SyncConfig    = config.SyncConfig
 	Host          = config.Host
 	Case          = config.Case
 	Stage         = config.Stage
@@ -39,6 +40,7 @@ var (
 	WithShell       = config.WithShell
 	WithLogging     = config.WithLogging
 	WithGit         = config.WithGit
+	WithSync        = config.WithSync
 	WithHost        = config.WithHost
 	WithCase        = config.WithCase
 	WithStage       = config.WithStage
