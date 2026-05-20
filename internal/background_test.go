@@ -3,7 +3,7 @@ package internal
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,7 +46,7 @@ func TestTerminatePIDStopsProcess(t *testing.T) {
 		t.Fatalf("expected pid in pid file")
 	}
 
-	logger := log.New(io.Discard, "", 0)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -83,7 +83,7 @@ func TestCollectStageOutputsMultiHostSuffix(t *testing.T) {
 	client := execution.NewLocalClient()
 	defer func() { _ = client.Close() }()
 
-	logger := log.New(io.Discard, "", 0)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ctx := context.Background()
 	if err := collectStageOutputs(ctx, client, runDir, stage, logger, "host-a"); err != nil {
 		t.Fatalf("collectStageOutputs failed: %v", err)
@@ -121,7 +121,7 @@ func TestTerminatePIDStopsProcessGroup(t *testing.T) {
 	client := execution.NewLocalClient()
 	defer func() { _ = client.Close() }()
 
-	logger := log.New(io.Discard, "", 0)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

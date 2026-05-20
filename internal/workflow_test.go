@@ -3,7 +3,7 @@ package internal
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,7 +45,7 @@ func TestExecuteStagesFailsFastAcrossHosts(t *testing.T) {
 		Custom:        map[string]string{},
 	}
 
-	logger := log.New(io.Discard, "", 0)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	backgroundMgr := newBackgroundManager(logger)
 	ctx := context.Background()
 
@@ -101,7 +101,7 @@ func TestExecuteStagesSkipsMarkedStage(t *testing.T) {
 		Custom:        map[string]string{},
 	}
 
-	logger := log.New(io.Discard, "", 0)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	backgroundMgr := newBackgroundManager(logger)
 	ctx := context.Background()
 
