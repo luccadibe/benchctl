@@ -43,9 +43,9 @@ example-local-container-clean:
 example-local-container-inspect run-id:
     @echo "Inspecting local container example..."
     cd examples/local_container && ../../benchctl --config benchmark.yaml inspect {{run-id}}
-example-local-container-edit run-id *FLAGS:
-    @echo "Editing local container example..."
-    cd examples/local_container && ../../benchctl --config benchmark.yaml edit {{run-id}} {{FLAGS}}
+example-local-container-annotate run-id *FLAGS:
+    @echo "Annotating local container example..."
+    cd examples/local_container && ../../benchctl --config benchmark.yaml annotate {{run-id}} {{FLAGS}}
 example-local-container-compare run-id1 run-id2:
     @echo "Comparing local container example..."
     cd examples/local_container && ../../benchctl --config benchmark.yaml compare {{run-id1}} {{run-id2}}

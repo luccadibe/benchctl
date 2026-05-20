@@ -91,9 +91,6 @@ type Stage struct {
 	Script string `yaml:"script,omitempty" json:"script,omitempty"`
 	// Shell command used to execute this stage (defaults to benchmark.shell).
 	Shell string `yaml:"shell,omitempty" json:"shell,omitempty"`
-	// If true, the command/script stdout is expected to be a JSON object whose
-	// keys/values will be appended to run metadata under .Custom
-	AppendMetadata bool `yaml:"append_metadata,omitempty" json:"append_metadata,omitempty"`
 	// Whether the stage should be skipped.
 	Skip bool `yaml:"skip,omitempty" json:"skip,omitempty"`
 	// Whether the stage should be ran in the background, allowing execution to continue with other stages.
@@ -196,10 +193,6 @@ func validateConfig(cfg *Config) error {
 		hasScript := strings.TrimSpace(st.Script) != ""
 		if hasCmd == hasScript {
 			errs = append(errs, "exactly one of command or script must be set")
-		}
-
-		if st.Background && st.AppendMetadata {
-			errs = append(errs, fmt.Sprintf("stages[%d] with background=true cannot set append_metadata", i))
 		}
 
 		// health check validation

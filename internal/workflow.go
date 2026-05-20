@@ -141,7 +141,7 @@ func executeStages(
 		}
 		logger.Info("stage started", "stage", stage.Name, "index", i+1, "total", len(cfg.Stages))
 		hostAliases := resolveStageHosts(stage)
-		for hostIndex, hostAlias := range hostAliases {
+		for _, hostAlias := range hostAliases {
 			host, ok := cfg.Hosts[hostAlias]
 			if !ok {
 				if hostAlias != "local" {
@@ -195,19 +195,6 @@ func executeStages(
 				logger.Info("stage output", "stage", stage.Name, "output", result.Output)
 			}
 			logger.Info("stage completed", "stage", stage.Name, "exit_code", result.ExitCode)
-
-			if stage.AppendMetadata {
-				if hostIndex == 0 {
-					if len(hostAliases) > 1 {
-						logger.Warn("append_metadata with multiple hosts uses only first host", "stage", stage.Name)
-					}
-					if err := appendStageMetadata(stage, metadata, result.Output); err != nil {
-						logger.Warn("append metadata failed", "stage", stage.Name, "error", err, "output", result.Output)
-					} else {
-						logger.Info("stage metadata appended", "stage", stage.Name)
-					}
-				}
-			}
 
 			if stage.HealthCheck != nil {
 				if err := runHealthCheck(ctx, client, stage, logger); err != nil {
@@ -278,31 +265,6 @@ func startBackgroundStage(ctx context.Context, client execution.ExecutionClient,
 		return "", fmt.Errorf("stage %s failed to start background command: pid not captured", stage.Name)
 	}
 	return pid, nil
-}
-
-// appendStageMetadata appends the stage's JSON marshalled output to the run metadata.
-func appendStageMetadata(stage config.Stage, metadata *RunMetadata, output string) error {
-	var out map[string]any
-	dec := json.NewDecoder(strings.NewReader(output))
-	dec.UseNumber()
-	if err := dec.Decode(&out); err != nil {
-		return fmt.Errorf("stage %s append_metadata enabled but output is not valid JSON: %w", stage.Name, err)
-	}
-	if metadata.Custom == nil {
-		metadata.Custom = map[string]string{}
-	}
-	for k, v := range out {
-		switch t := v.(type) {
-		case json.Number:
-			metadata.Custom[k] = t.String()
-		case string:
-			metadata.Custom[k] = t
-		default:
-			b, _ := json.Marshal(t)
-			metadata.Custom[k] = string(b)
-		}
-	}
-	return nil
 }
 
 // runHealthCheck runs the health check for a stage.

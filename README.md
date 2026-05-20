@@ -27,7 +27,7 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **Background Stages**: Keep monitoring commands running alongside your benchmark until all your non-background stages finish
 - **Metadata Tracking**: Custom metadata support for benchmark runs.
 - **Result Management**: Organized storage with run IDs and comprehensive metadata, so you always know exactly which parameters and configuration was used for a specific benchmark run.
-- **Append Metadata from Stages**: Stages can emit JSON on stdout and append it to run metadata automatically
+- **Post-Run Annotation**: Add custom metadata to completed runs after inspecting results
 - **Live Command Streaming**: Stage commands stream directly to your terminal with preserved ANSI colors locally and over SSH
 
 > **Note**: `benchctl` is under active development. There is currently **no commitment to API stability**. Features, flags, and file formats may change in future releases until I release v1.0.0.
@@ -214,7 +214,7 @@ benchctl run --config benchmark.yaml
 # Skip stages by name
 benchctl run --config benchmark.yaml --skip setup --skip warmup
 
-# Add custom metadata
+# Add custom metadata when starting a run
 benchctl run --config benchmark.yaml --metadata "someFeature"="true" --metadata "someOtherFeature"="false"
 
 # Pass environment variables to stages
@@ -222,39 +222,16 @@ benchctl run --config benchmark.yaml -e BRANCH=main -e LG_MAX_RPS=2000
 
 # Inspect a run
 benchctl inspect <run-id>
+
+# Annotate a completed run after analysis
+benchctl annotate <run-id> --metadata latency_p95_ms=123.4
 ```
 
 
 ### Metadata
 
-Append JSON metadata directly from a stage by enabling `append_metadata`.
-
-In your configuration, you can add a stage that outputs a  some metadata in JSON format to stdout:
-
-```yaml
-stages:
-  - name: analyse
-    host: local
-    command: |
-      uv run python - <<'PY'
-      # /// script
-      # requires-python = ">=3.10"
-      # dependencies = []
-      # ///
-      import json
-      # Compute something and print a single JSON object
-      print(json.dumps({
-          "latency_p50_ms": "123.4",
-          "notes": "baseline run"
-      }))
-      PY
-    append_metadata: true
-```
-
-At runtime, the JSON keys/values are stringified and merged into the run’s metadata under `custom`.
-This is helpful to annotate runs with additional metadata that is dependent on the stage's output.
-It can be used to enable easy comparison of runs, for example to compare performance statistics.
-You can run your data-analysis script and append the metadata to the run.
+Pass `--metadata key=value` to `benchctl run` for metadata known before execution.
+Use `benchctl annotate <run-id> --metadata key=value` after a run for metadata discovered during ad hoc analysis.
 
 ## Stage Environment Variables
 
