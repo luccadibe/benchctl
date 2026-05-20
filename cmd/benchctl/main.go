@@ -101,8 +101,8 @@ func main() {
 						subCtx = ctx
 					}
 
-					internal.RunWorkflow(subCtx, cfg, customMetadata, envVars)
-					return nil
+					_, err = internal.RunWorkflow(subCtx, cfg, customMetadata, envVars)
+					return err
 				},
 				Flags: []cli.Flag{
 					metadataFlag,
