@@ -1,7 +1,7 @@
 # Benchctl
 
-A CLI framework for orchestrating benchmarks across distributed or local setups. 
-Designed for research benchmarking scenarios with workflow coordination, data collection, visualization, and result management.
+A CLI framework for orchestrating benchmarks across distributed or local setups.
+Designed for research benchmarking scenarios with workflow coordination, data collection, and result management.
 
 ## Motivation
 
@@ -10,7 +10,7 @@ And consistently, I lost a lot of time in plumbing work:
 - Managing a bunch of different ssh connections to different VMs
 - Copying files over different filesystems
 - Running commands everywhere
-- Plotting data 
+- Keeping benchmark data organized
 - Remembering which results belong to certain parameters used for the benchmark runs
 - Managing metadata
 
@@ -21,11 +21,10 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 ## Features
 
 - **Distributed Execution**: Run benchmarks across multiple remote hosts or locally
-- **YAML Configuration**: Declarative workflow definition with hosts, stages, and plots
+- **YAML Configuration**: Declarative workflow definition with hosts and stages
 - **Health Checks**: Built-in readiness detection (port, HTTP, file, process, command)
 - **Data Collection**: Automatic file collection via SCP with schema validation
 - **Background Stages**: Keep monitoring commands running alongside your benchmark until all your non-background stages finish
-- **Visualization**: Auto-generated plots (time series, histograms, boxplots)
 - **Metadata Tracking**: Custom metadata support for benchmark runs.
 - **Result Management**: Organized storage with run IDs and comprehensive metadata, so you always know exactly which parameters and configuration was used for a specific benchmark run.
 - **Append Metadata from Stages**: Stages can emit JSON on stdout and append it to run metadata automatically
@@ -102,22 +101,6 @@ stages:
             - name: latency_ms
               type: float
               unit: ms
-
-plots:
-  - name: latency-over-time
-    title: Request Latency Over Time
-    source: results
-    type: time_series
-    x: timestamp
-    y: latency_ms
-    engine: seaborn
-    format: png
-    options:
-      dpi: 150
-      width_px: 1200
-      height_px: 600
-      x_label_angle: 45
-      x_timestamp_format: medium
 ```
 
 2. **Run Benchmark**:
@@ -129,19 +112,8 @@ benchctl run --config benchmark.yaml
 ```bash
 # Results saved to ./results/1/...
 # Check metadata.json for run details
-# Generated plots and collected files are stored directly in ./results/1/
+# Collected files are stored directly in ./results/1/
 ```
-
-## Plotting engines
-
-- Default engine: `seaborn` (Python) via `uv run` with an embedded script (PEP 723).
-- Alternative: `gonum` (pure Go).
-
-### Python/uv requirements (for seaborn)
-
-- You need `python >= 3.10` and [uv](https://docs.astral.sh/uv/) available on your PATH.
-- First run downloads Python deps into uv’s cache; subsequent runs are fast.
-- No virtualenvs or repo Python files required; everything is embedded and invoked via `uv run`.
 
 ## Configuration Reference
 
@@ -195,7 +167,6 @@ Stages run through a shell command. Set `benchmark.shell` to control it (the def
 - Use `host` for a single host or `hosts` for multiple hosts. If neither is set, the stage runs on `local`.
 - Hosts in `hosts` execute sequentially in the listed order.
 - Outputs collected from multi-host stages are suffixed as `outputName__host.ext`.
-- If `append_metadata` is enabled with multiple hosts, only the first host’s output is used (a warning is logged).
 
 Example:
 ```yaml
@@ -213,10 +184,9 @@ stages:
 Background stages run alongside the rest of the workflow. benchctl keeps them alive until the final non-background stage finishes, then sends SIGTERM to the stage's process group, waits `BackgroundTerminationGrace` (2 seconds by default), and finally SIGKILL if they are still running.
 This uses `setsid` to start a new process group, so the entire background task tree is terminated reliably.
 Their outputs are collected after shutdown, so its ideal for monitoring tasks, like resource usage monitoring.
-Background stages cannot use `append_metadata`.
 
 ### Data Schema
-Define CSV column types for validation and plotting:
+Define CSV column types for validation and result inspection:
 
 ```yaml
 data_schema:
@@ -232,30 +202,6 @@ data_schema:
     - name: status
       type: string
 ```
-
-### Plots
-Auto-generated visualizations:
-
-```yaml
-plots:
-  - name: latency-histogram
-    title: Latency Distribution
-    source: metrics
-    type: histogram
-    x: latency_ms
-    
-  - name: throughput-timeseries
-    title: Requests Over Time
-    source: metrics
-    type: time_series
-    x: timestamp
-    y: requests_per_second
-    groupby: pod_name
-    engine: seaborn
-```
-
-- Set `groupby` (seaborn engine only) to split plots by a categorical column.
-- Leave `engine` unset to use the seaborn backend; set to `gonum` for Go rendered (no python needed).
 
 ## Usage
 
@@ -326,11 +272,6 @@ Use these to locate inputs/outputs or to parameterize your scripts.
 
 See the [`examples/`](examples/) directory for complete benchmark configurations.
 - Local container testing
-
-## Roadmap
-
-- [ ] Add a local Web UI for viewing benchmark results and plots.
-
 
 ## License
 

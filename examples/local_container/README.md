@@ -8,7 +8,7 @@ This example includes:
 - A Go HTTP server that simulates work with configurable delays and error rates
 - Docker containerization of the server
 - A load generator script
-- Automated benchmark execution with data collection and visualization
+- Automated benchmark execution with data collection
 
 
 ## Prerequisites
@@ -51,13 +51,6 @@ The benchmark collects the following metrics:
 - `status` - Request status (success/error)
 - `response_time_ms` - Total response time including network latency
 - `task_type` - Type of task (0, 1, 2)
-
-## Generated Plots
-
-The benchmark generates three visualization plots:
-- **Latency Over Time** - Time series showing latency trends
-- **Latency Distribution** - Histogram showing latency distribution
-- **Latency Box Plot** - Statistical summary of latency data
 
 ## Running the Example
 

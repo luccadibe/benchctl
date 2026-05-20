@@ -4,7 +4,6 @@ default:
     @just --list
 
 build:
-    cd ui && bun run build
     go build -o benchctl ./cmd/benchctl
 
 schema:
@@ -34,10 +33,6 @@ test:
 example-local-container:
     @echo "Running local container example..."
     cd examples/local_container && ../../benchctl --config benchmark.yaml run --metadata "branch"="main" --metadata "commit"="example-run"
-
-example-local-container-ui:
-    @echo "Running local container example UI..."
-    cd examples/local_container && ../../benchctl --config benchmark.yaml ui
 
 example-local-container-clean:
     @echo "Cleaning up local container example..."

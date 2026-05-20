@@ -35,14 +35,3 @@ stages:
               unit: ms
             - name: status
               type: string
-
-plots:
-  - name: latency_over_time
-    title: Latency over time
-    source: benchmark_data
-    type: time_series
-    x: timestamp
-    y: latency_ms
-    aggregation: p95
-    format: png
-

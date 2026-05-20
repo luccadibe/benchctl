@@ -47,13 +47,6 @@ func TestLoadConfig_Success(t *testing.T) {
 			t.Fatalf("expected data_schema.columns to be non-empty")
 		}
 	}
-	// Check that plots reference outputs correctly
-	if len(cfg.Plots) > 0 {
-		plot := cfg.Plots[0]
-		if plot.Source == "" {
-			t.Fatalf("expected plot source to be set")
-		}
-	}
 }
 
 // TestLoadConfig_InvalidStage ensures we error when neither command nor script is given.
@@ -243,93 +236,6 @@ stages:
 		t.Fatalf("expected error for invalid timestamp format")
 	}
 	if !strings.Contains(err.Error(), "data_schema.columns[0].format must be one of") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestPlotGroupBySeabornAllowed(t *testing.T) {
-	yaml := `
-benchmark:
-  name: groupby-seaborn
-  output_dir: ./results
-hosts:
-  local: {}
-stages:
-  - name: collect
-    host: local
-    script: ./collect.sh
-    outputs:
-      - name: metrics
-        remote_path: /tmp/metrics.csv
-        data_schema:
-          format: csv
-          columns:
-            - name: ts
-              type: timestamp
-            - name: latency
-              type: float
-            - name: pod
-              type: string
-plots:
-  - name: latency_by_pod
-    title: Latency by Pod
-    source: metrics
-    type: time_series
-    x: ts
-    y: latency
-    groupby: pod
-    engine: seaborn
-`
-	cfg, err := ParseYAML([]byte(yaml))
-	if err != nil {
-		t.Fatalf("unexpected error parsing seaborn groupby plot: %v", err)
-	}
-	if len(cfg.Plots) != 1 {
-		t.Fatalf("expected one plot, got %d", len(cfg.Plots))
-	}
-	if cfg.Plots[0].GroupBy != "pod" {
-		t.Fatalf("expected plot.groupby to be 'pod', got %q", cfg.Plots[0].GroupBy)
-	}
-}
-
-func TestPlotGroupByGonumRejected(t *testing.T) {
-	yaml := `
-benchmark:
-  name: groupby-gonum
-  output_dir: ./results
-hosts:
-  local: {}
-stages:
-  - name: collect
-    host: local
-    script: ./collect.sh
-    outputs:
-      - name: metrics
-        remote_path: /tmp/metrics.csv
-        data_schema:
-          format: csv
-          columns:
-            - name: ts
-              type: timestamp
-            - name: latency
-              type: float
-            - name: pod
-              type: string
-plots:
-  - name: latency_by_pod
-    title: Latency by Pod
-    source: metrics
-    type: time_series
-    x: ts
-    y: latency
-    groupby: pod
-    engine: gonum
-`
-	_, err := ParseYAML([]byte(yaml))
-	if err == nil {
-		t.Fatalf("expected error when using groupby with gonum")
-	}
-	if !strings.Contains(err.Error(), "groupby is only supported with the seaborn engine") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
