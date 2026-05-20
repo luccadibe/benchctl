@@ -64,8 +64,8 @@ It is intended for agentic coding assistants.
 - Avoid swallowing errors; if intentionally ignored, add a reason.
 
 ## Logging and output
-- The CLI writes user-visible output via `fmt`/writers.
-- Use existing logging patterns (see `internal/logging` if present).
+- Workflow logging uses `log/slog` with a human console handler and JSON log file handler.
+- Default run logs are written to `results/<run_id>/benchctl.ndjson` unless `benchmark.logging.path` overrides it.
 - Keep output stable; CLI behavior is part of API surface.
 
 ## Config/schema rules
@@ -73,6 +73,12 @@ It is intended for agentic coding assistants.
 - Keep YAML/JSON tags in sync when adding fields.
 - Validation errors should be aggregated when possible.
 - Default values should be set in validation or constructor helpers, not ad hoc during execution.
+- Regenerate `cmd/schema/schema.json` with `just schema` after config shape changes.
+
+## Public Go API
+- `benchctl.go` exposes the supported library API for Go users.
+- Keep exported builder helpers in sync between `internal/config/builder.go` and `benchctl.go`.
+- Core execution should return errors, not call `log.Fatal` or `os.Exit`.
 
 ## Tests
 - Unit tests live under `internal/`.
@@ -112,6 +118,7 @@ It is intended for agentic coding assistants.
 ## When editing configs
 - Preserve YAML key naming conventions (snake_case).
 - Ensure schema changes are reflected in config validation.
+- `cases:` run all stages once per case; `stages[].execute_only_for` restricts a stage to one case.
 
 ## When adding CLI flags
 - Update `cmd/benchctl` command wiring.

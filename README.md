@@ -28,6 +28,10 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **Metadata Tracking**: Custom metadata support for benchmark runs.
 - **Result Management**: Organized storage with run IDs and comprehensive metadata, so you always know exactly which parameters and configuration was used for a specific benchmark run.
 - **Post-Run Annotation**: Add custom metadata to completed runs after inspecting results
+- **Structured Logging**: Human-readable console logs plus JSON logs in each run directory
+- **Git Capture**: Automatic commit, branch, remote, and dirty-state metadata
+- **Comparison Cases**: Run the same workflow over named cases with per-case environment variables
+- **Result Sync**: Optional `rclone` push for backing up result directories
 - **Live Command Streaming**: Stage commands stream directly to your terminal with preserved ANSI colors locally and over SSH
 
 > **Note**: `benchctl` is under active development. There is currently **no commitment to API stability**. Features, flags, and file formats may change in future releases until I release v1.0.0.
@@ -64,6 +68,10 @@ Go to the [releases](https://github.com/luccadibe/benchctl/releases) page and do
 benchmark:
   name: my-benchmark
   output_dir: ./results
+  logging:
+    level: info
+  git:
+    require_clean: false
 
 hosts:
   local: {}  # Local execution
@@ -102,6 +110,25 @@ stages:
               type: float
               unit: ms
 ```
+
+### Logging
+
+benchctl writes colored human-readable logs to the terminal and JSON logs to `benchctl.ndjson` inside each run directory by default.
+Set `benchmark.logging.path` to choose a different JSON log path and `benchmark.logging.level` to `debug`, `info`, `warn`, or `error`.
+
+### Git Metadata
+
+Git metadata is captured automatically when `benchctl run` starts inside a git repository.
+
+```yaml
+benchmark:
+  git:
+    capture: true
+    require_clean: false
+    save_patch: false
+```
+
+Set `require_clean: true` to fail runs with a dirty worktree. Set `save_patch: true` to write `git.patch` into the run directory when tracked files are dirty.
 
 2. **Run Benchmark**:
 ```bash
@@ -185,6 +212,47 @@ Background stages run alongside the rest of the workflow. benchctl keeps them al
 This uses `setsid` to start a new process group, so the entire background task tree is terminated reliably.
 Their outputs are collected after shutdown, so its ideal for monitoring tasks, like resource usage monitoring.
 
+### Comparison Cases
+
+Use `cases:` to run the same stages for multiple named benchmark variants. Each case exports `BENCHCTL_CASE_NAME` plus its configured `env` values.
+
+```yaml
+cases:
+  - name: postgres
+    env:
+      DB_ENGINE: postgres
+  - name: mysql
+    env:
+      DB_ENGINE: mysql
+
+stages:
+  - name: run-load-test
+    command: ./load.sh "$DB_ENGINE"
+
+  - name: postgres-extra
+    execute_only_for: postgres
+    command: ./postgres-extra.sh
+```
+
+Collected files are prefixed with the case name, for example `postgres__metrics.csv`.
+
+### Sync
+
+benchctl delegates result sync to [`rclone`](https://rclone.org/). Configure the destination in `benchmark.yaml`:
+
+```yaml
+benchmark:
+  sync:
+    remote: s3:my-bucket/benchctl-results
+    args: ["--checksum"]
+```
+
+Then run:
+
+```bash
+benchctl sync push --config benchmark.yaml
+```
+
 ### Data Schema
 Define CSV column types for validation and result inspection:
 
@@ -242,6 +310,7 @@ During stage execution, the following environment variables are exported for com
 - `BENCHCTL_OUTPUT_DIR`: benchmark output root (from `benchmark.output_dir`)
 - `BENCHCTL_CONFIG_PATH`: set if provided in the environment when invoking benchctl
 - `BENCHCTL_BIN`: absolute path to the running benchctl binary
+- `BENCHCTL_CASE_NAME`: current case name when `cases:` are configured
 
 Use these to locate inputs/outputs or to parameterize your scripts.
 
