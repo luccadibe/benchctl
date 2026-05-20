@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -28,6 +29,13 @@ type RunMetadata struct {
 	Custom        map[string]string      `json:"custom,omitempty"`
 }
 
+// RunResult describes a completed workflow invocation.
+type RunResult struct {
+	RunID    string
+	RunDir   string
+	Metadata *RunMetadata
+}
+
 // generateRunID creates a unique run ID as a simple increasing counter
 func generateRunID(outputDir string) (string, error) {
 	runNum := 1
@@ -41,17 +49,17 @@ func generateRunID(outputDir string) (string, error) {
 	}
 }
 
-// RunWorkflow executes a benchmark workflow with run ID tracking
-func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[string]string, envVars map[string]string) {
+// RunWorkflow executes a benchmark workflow with run ID tracking.
+func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[string]string, envVars map[string]string) (*RunResult, error) {
 	// Generate run ID and create run directory
 	runID, err := generateRunID(cfg.Benchmark.OutputDir)
 	if err != nil {
-		log.Fatalf("Failed to generate run ID: %v", err)
+		return nil, fmt.Errorf("generate run id: %w", err)
 	}
 
 	runDir := filepath.Join(cfg.Benchmark.OutputDir, runID)
 	if err := os.MkdirAll(runDir, 0755); err != nil {
-		log.Fatalf("Failed to create run directory: %v", err)
+		return nil, fmt.Errorf("create run directory: %w", err)
 	}
 
 	metadata := &RunMetadata{
@@ -63,7 +71,10 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 		Custom:        customMetadata,
 	}
 
-	logger, logWriter, closeLogger := createLogger(cfg)
+	logger, logWriter, closeLogger, err := createLogger(cfg)
+	if err != nil {
+		return nil, err
+	}
 	defer closeLogger()
 	logger.Printf("Run ID: %s", runID)
 	logger.Printf("Results will be saved to: %s", runDir)
@@ -76,19 +87,20 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 		if stopErr != nil {
 			logger.Printf("ERROR stopping background stages: %v", stopErr)
 		}
-		logger.Fatalf("workflow failed: %v", stageErr)
+		return nil, fmt.Errorf("workflow failed: %w", errors.Join(stageErr, stopErr))
 	}
 	if stopErr != nil {
-		logger.Fatalf("failed to stop background stages: %v", stopErr)
+		return nil, fmt.Errorf("stop background stages: %w", stopErr)
 	}
 
 	metadata.EndTime = time.Now()
 	if err := saveMetadata(metadata, runDir); err != nil {
-		logger.Fatalf("%s", err)
+		return nil, err
 	}
 
 	logger.Printf("Workflow completed successfully!")
 	logger.Printf("Results saved to: %s", runDir)
+	return &RunResult{RunID: runID, RunDir: runDir, Metadata: metadata}, nil
 }
 
 // executeStages executes the stages of the benchmark
@@ -335,20 +347,20 @@ func parsePID(output string) string {
 }
 
 // createLogger creates a logger based on the logging configuration and returns a logger, a writer, and a function to close the writer.
-func createLogger(cfg *config.Config) (*log.Logger, io.Writer, func()) {
+func createLogger(cfg *config.Config) (*log.Logger, io.Writer, func(), error) {
 	if cfg.Benchmark.Logging != nil {
 		if cfg.Benchmark.Logging.Path != "" {
 			file, err := os.Create(cfg.Benchmark.Logging.Path)
 			if err != nil {
-				log.Fatalf("error creating log file: %v", err)
+				return nil, nil, nil, fmt.Errorf("create log file: %w", err)
 			}
 			return log.New(file, "", log.LstdFlags), file, func() {
 				_ = file.Close()
-			}
+			}, nil
 		}
 	}
 	stdout := os.Stdout
-	return log.New(stdout, "", log.LstdFlags), stdout, func() {}
+	return log.New(stdout, "", log.LstdFlags), stdout, func() {}, nil
 }
 
 // saveMetadata saves the metadata to a file

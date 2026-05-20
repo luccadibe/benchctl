@@ -65,9 +65,9 @@ func TestWorkflowSimple(t *testing.T) {
 
 	cfg := loadWorkflowConfig(t, "simple.yaml")
 
-	// Run workflow - this will use log.Fatal on error, so we can't capture it easily
-	// For now, we just ensure it doesn't panic
-	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
+	}
 
 	// Should not panic
 }
@@ -77,7 +77,9 @@ func TestWorkflowMultiStage(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "multi_stage.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
+	}
 
 	// Should not panic
 }
@@ -92,17 +94,19 @@ func TestWorkflowWithHealthCheck(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	// Start workflow in goroutine since it might take time
-	done := make(chan bool)
+	// Start workflow in goroutine since it might take time.
+	done := make(chan error, 1)
 	go func() {
-		internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
-		done <- true
+		_, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+		done <- err
 	}()
 
 	// Wait for completion or timeout
 	select {
-	case <-done:
-		// Workflow completed
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("workflow failed: %v", err)
+		}
 	case <-ctx.Done():
 		t.Fatal("workflow timed out")
 	}
@@ -130,7 +134,9 @@ func TestWorkflowWithOutput(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "with_output.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
+	}
 
 	// Verify file was actually copied
 	// Files should bein run directory using output.name + extension from remote_path
@@ -153,7 +159,9 @@ func TestWorkflowCommandWithSpecialCharacters(t *testing.T) {
 	setupTest(t)
 	defer teardownTest(t)
 	cfg := loadWorkflowConfig(t, "special_chars.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
+	}
 
 	// should not panic
 }
@@ -163,7 +171,9 @@ func TestWorkflowRemoteScriptExecution(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "remote_script.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
+	}
 
 	// Verify file created by the remote script was copied locally
 	// Files should be in run directory using output.name + extension
@@ -185,7 +195,9 @@ func TestWorkflowAppendMetadata(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "append_metadata.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
+	}
 
 	// Inspect metadata.json under the first run directory
 	mdPath := filepath.Join(testOutputDir, "1", "metadata.json")
@@ -212,7 +224,9 @@ func TestWorkflowBackgroundStage(t *testing.T) {
 	defer teardownTest(t)
 
 	cfg := loadWorkflowConfig(t, "background.yaml")
-	internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
+	}
 
 	runDir := filepath.Join(testOutputDir, "1")
 	monitorPath := filepath.Join(runDir, "monitor.csv")
