@@ -39,12 +39,21 @@ type Benchmark struct {
 	Shell string `yaml:"shell,omitempty" json:"shell,omitempty" jsonschema:"default=bash -lic"`
 	// the logging configuration
 	Logging *LoggingConfig `yaml:"logging,omitempty" json:"logging,omitempty"`
+	// Git controls automatic repository metadata capture.
+	Git *GitConfig `yaml:"git,omitempty" json:"git,omitempty"`
 }
 
 // LoggingConfig holds the logging configuration. If no path is provided, logs are written to stdout.
 type LoggingConfig struct {
 	Level string `yaml:"level" json:"level"`
 	Path  string `yaml:"path,omitempty" json:"path,omitempty"`
+}
+
+// GitConfig holds automatic git metadata capture settings.
+type GitConfig struct {
+	Capture      *bool `yaml:"capture,omitempty" json:"capture,omitempty"`
+	RequireClean bool  `yaml:"require_clean,omitempty" json:"require_clean,omitempty"`
+	SavePatch    bool  `yaml:"save_patch,omitempty" json:"save_patch,omitempty"`
 }
 
 // DataSchema defines the schema for structured data outputs (e.g., CSV files).

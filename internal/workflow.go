@@ -27,6 +27,7 @@ type RunMetadata struct {
 	Config        *config.Config         `json:"config"`
 	Hosts         map[string]config.Host `json:"hosts"`
 	Custom        map[string]string      `json:"custom,omitempty"`
+	Git           *GitMetadata           `json:"git,omitempty"`
 }
 
 // RunResult describes a completed workflow invocation.
@@ -77,6 +78,14 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	}
 	defer closeLogger()
 	logger.Info("run started", "run_id", runID, "run_dir", runDir)
+	gitMetadata, err := CaptureGitMetadata(ctx, cfg, runDir)
+	if err != nil {
+		return nil, err
+	}
+	metadata.Git = gitMetadata
+	if gitMetadata != nil {
+		logger.Info("git metadata captured", "commit", gitMetadata.Commit, "branch", gitMetadata.Branch, "dirty", gitMetadata.Dirty)
+	}
 
 	backgroundMgr := newBackgroundManager(logger)
 
