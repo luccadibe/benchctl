@@ -54,6 +54,20 @@ func WithHost(alias string, host Host) Option {
 	}
 }
 
+// WithCase appends a comparison benchmark case.
+func WithCase(name string, env map[string]string) Option {
+	return func(cfg *Config) {
+		benchmarkCase := Case{Name: name}
+		if len(env) > 0 {
+			benchmarkCase.Env = make(map[string]string, len(env))
+			for key, value := range env {
+				benchmarkCase.Env[key] = value
+			}
+		}
+		cfg.Cases = append(cfg.Cases, benchmarkCase)
+	}
+}
+
 // WithStage appends a workflow stage.
 func WithStage(stage Stage) Option {
 	return func(cfg *Config) {
@@ -117,6 +131,13 @@ func StageShell(shell string) StageOption {
 func Skip() StageOption {
 	return func(stage *Stage) {
 		stage.Skip = true
+	}
+}
+
+// ExecuteOnlyFor limits a stage to one case name.
+func ExecuteOnlyFor(caseName string) StageOption {
+	return func(stage *Stage) {
+		stage.ExecuteOnlyFor = caseName
 	}
 }
 

@@ -26,6 +26,7 @@ type RunMetadata struct {
 	EndTime       time.Time              `json:"end_time"`
 	Config        *config.Config         `json:"config"`
 	Hosts         map[string]config.Host `json:"hosts"`
+	Cases         []config.Case          `json:"cases,omitempty"`
 	Custom        map[string]string      `json:"custom,omitempty"`
 	Git           *GitMetadata           `json:"git,omitempty"`
 }
@@ -69,6 +70,7 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 		StartTime:     time.Now(),
 		Config:        cfg,
 		Hosts:         cfg.Hosts,
+		Cases:         cfg.Cases,
 		Custom:        customMetadata,
 	}
 
@@ -127,94 +129,111 @@ func executeStages(
 		return nil
 	}
 
-	envPrefix := buildEnvPrefix(runID, runDir, cfg, envVars)
 	consoleSink := resolveConsoleWriter()
 	stdoutSink := consoleSink
 	stderrSink := consoleSink
 	usePTY := consoleSink != nil
 	logStageOutput := consoleSink == nil || !writersReferToSameFD(consoleSink, logWriter)
 
-	for i, stage := range cfg.Stages {
-		if stage.Skip {
-			logger.Info("stage skipped", "stage", stage.Name, "index", i+1, "total", len(cfg.Stages))
-			continue
-		}
-		logger.Info("stage started", "stage", stage.Name, "index", i+1, "total", len(cfg.Stages))
-		hostAliases := resolveStageHosts(stage)
-		for _, hostAlias := range hostAliases {
-			host, ok := cfg.Hosts[hostAlias]
-			if !ok {
-				if hostAlias != "local" {
-					return fmt.Errorf("stage %s references unknown host %s", stage.Name, hostAlias)
-				}
-				host = config.Host{}
-			}
-
-			client, err := openExecutionClient(host)
-			if err != nil {
-				return fmt.Errorf("error creating execution client for stage %s: %w", stage.Name, err)
-			}
-
-			commandBody, err := prepareStageCommand(ctx, stage, host, runID, client)
-			if err != nil {
-				_ = client.Close()
-				return err
-			}
-
-			commandBody = wrapWithShell(commandBody, resolveStageShell(cfg, stage))
-
-			if stage.Background {
-				pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
-				_ = client.Close()
-				if err != nil {
-					return err
-				}
-				backgroundMgr.Add(backgroundStage{stage: stage, hostAlias: hostAlias, host: host, pid: pid})
-				logger.Info("stage running in background", "stage", stage.Name)
+	for _, benchmarkCase := range workflowCases(cfg) {
+		envPrefix := buildEnvPrefix(runID, runDir, cfg, envVars, benchmarkCase)
+		for i, stage := range cfg.Stages {
+			if stage.Skip {
+				logger.Info("stage skipped", "stage", stage.Name, "case", benchmarkCase.Name, "index", i+1, "total", len(cfg.Stages))
 				continue
 			}
-
-			result, err := client.RunCommand(ctx, execution.CommandRequest{
-				Command: envPrefix + commandBody,
-				Stdout:  stdoutSink,
-				Stderr:  stderrSink,
-				UsePTY:  usePTY,
-			})
-			if err == nil && result.ExitCode != 0 {
-				err = fmt.Errorf("command exited with code %d", result.ExitCode)
+			if !stageAppliesToCase(stage, benchmarkCase) {
+				logger.Info("stage skipped for case", "stage", stage.Name, "case", benchmarkCase.Name)
+				continue
 			}
-			if err != nil {
-				if logStageOutput && strings.TrimSpace(result.Output) != "" {
-					logger.Info("stage captured output", "stage", stage.Name, "output", result.Output)
+			logger.Info("stage started", "stage", stage.Name, "case", benchmarkCase.Name, "index", i+1, "total", len(cfg.Stages))
+			hostAliases := resolveStageHosts(stage)
+			for _, hostAlias := range hostAliases {
+				host, ok := cfg.Hosts[hostAlias]
+				if !ok {
+					if hostAlias != "local" {
+						return fmt.Errorf("stage %s references unknown host %s", stage.Name, hostAlias)
+					}
+					host = config.Host{}
 				}
+
+				client, err := openExecutionClient(host)
+				if err != nil {
+					return fmt.Errorf("error creating execution client for stage %s: %w", stage.Name, err)
+				}
+
+				commandBody, err := prepareStageCommand(ctx, stage, host, runID, client)
+				if err != nil {
+					_ = client.Close()
+					return err
+				}
+
+				commandBody = wrapWithShell(commandBody, resolveStageShell(cfg, stage))
+
+				if stage.Background {
+					pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
+					_ = client.Close()
+					if err != nil {
+						return err
+					}
+					backgroundMgr.Add(backgroundStage{stage: stage, hostAlias: hostAlias, host: host, caseName: benchmarkCase.Name, pid: pid})
+					logger.Info("stage running in background", "stage", stage.Name)
+					continue
+				}
+
+				result, err := client.RunCommand(ctx, execution.CommandRequest{
+					Command: envPrefix + commandBody,
+					Stdout:  stdoutSink,
+					Stderr:  stderrSink,
+					UsePTY:  usePTY,
+				})
+				if err == nil && result.ExitCode != 0 {
+					err = fmt.Errorf("command exited with code %d", result.ExitCode)
+				}
+				if err != nil {
+					if logStageOutput && strings.TrimSpace(result.Output) != "" {
+						logger.Info("stage captured output", "stage", stage.Name, "output", result.Output)
+					}
+					_ = client.Close()
+					return fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
+				}
+
+				if logStageOutput {
+					logger.Info("stage output", "stage", stage.Name, "output", result.Output)
+				}
+				logger.Info("stage completed", "stage", stage.Name, "exit_code", result.ExitCode)
+
+				if stage.HealthCheck != nil {
+					if err := runHealthCheck(ctx, client, stage, logger); err != nil {
+						_ = client.Close()
+						return err
+					}
+				}
+
+				if len(stage.Outputs) > 0 {
+					if err := collectStageOutputs(ctx, client, runDir, stage, logger, hostAlias, benchmarkCase.Name); err != nil {
+						_ = client.Close()
+						return err
+					}
+				}
+
 				_ = client.Close()
-				return fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
 			}
-
-			if logStageOutput {
-				logger.Info("stage output", "stage", stage.Name, "output", result.Output)
-			}
-			logger.Info("stage completed", "stage", stage.Name, "exit_code", result.ExitCode)
-
-			if stage.HealthCheck != nil {
-				if err := runHealthCheck(ctx, client, stage, logger); err != nil {
-					_ = client.Close()
-					return err
-				}
-			}
-
-			if len(stage.Outputs) > 0 {
-				if err := collectStageOutputs(ctx, client, runDir, stage, logger, hostAlias); err != nil {
-					_ = client.Close()
-					return err
-				}
-			}
-
-			_ = client.Close()
 		}
 	}
 
 	return nil
+}
+
+func workflowCases(cfg *config.Config) []config.Case {
+	if len(cfg.Cases) == 0 {
+		return []config.Case{{}}
+	}
+	return cfg.Cases
+}
+
+func stageAppliesToCase(stage config.Stage, benchmarkCase config.Case) bool {
+	return strings.TrimSpace(stage.ExecuteOnlyFor) == "" || stage.ExecuteOnlyFor == benchmarkCase.Name
 }
 
 func resolveStageHosts(stage config.Stage) []string {
@@ -412,7 +431,7 @@ func wrapWithShell(command, shell string) string {
 	return fmt.Sprintf("%s %s", shell, shellQuote(command))
 }
 
-func buildEnvPrefix(runID, runDir string, cfg *config.Config, envVars map[string]string) string {
+func buildEnvPrefix(runID, runDir string, cfg *config.Config, envVars map[string]string, benchmarkCase config.Case) string {
 	configPath := os.Getenv(EnvConfigPath)
 	exePath, _ := os.Executable()
 	exports := []string{
@@ -434,6 +453,19 @@ func buildEnvPrefix(runID, runDir string, cfg *config.Config, envVars map[string
 		sort.Strings(keys)
 		for _, key := range keys {
 			exports = append(exports, key+"="+shellQuote(envVars[key]))
+		}
+	}
+	if strings.TrimSpace(benchmarkCase.Name) != "" {
+		exports = append(exports, "BENCHCTL_CASE_NAME="+shellQuote(benchmarkCase.Name))
+	}
+	if len(benchmarkCase.Env) > 0 {
+		keys := make([]string, 0, len(benchmarkCase.Env))
+		for key := range benchmarkCase.Env {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			exports = append(exports, key+"="+shellQuote(benchmarkCase.Env[key]))
 		}
 	}
 	return "export " + strings.Join(exports, " ") + "; "

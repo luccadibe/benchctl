@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/luccadibe/benchctl/internal/config"
@@ -116,5 +117,49 @@ func TestExecuteStagesSkipsMarkedStage(t *testing.T) {
 	}
 	if string(data) != "1\n" && string(data) != "1" {
 		t.Fatalf("expected only one execution, got %q", string(data))
+	}
+}
+
+func TestExecuteStagesRunsCasesWithEnv(t *testing.T) {
+	tempDir := t.TempDir()
+	runDir := filepath.Join(tempDir, "run")
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		t.Fatalf("failed to create run dir: %v", err)
+	}
+
+	outputPath := filepath.Join(tempDir, "cases.txt")
+	cfg := &config.Config{
+		Benchmark: config.Benchmark{Name: "cases", OutputDir: runDir},
+		Hosts:     map[string]config.Host{"local": {}},
+		Cases: []config.Case{
+			{Name: "a", Env: map[string]string{"ENGINE": "engine-a"}},
+			{Name: "b", Env: map[string]string{"ENGINE": "engine-b"}},
+		},
+		Stages: []config.Stage{
+			{Name: "all", Command: "printf \"%s:%s\\n\" \"$BENCHCTL_CASE_NAME\" \"$ENGINE\" >> '" + outputPath + "'"},
+			{Name: "only-b", ExecuteOnlyFor: "b", Command: "printf \"only:%s\\n\" \"$BENCHCTL_CASE_NAME\" >> '" + outputPath + "'"},
+		},
+	}
+
+	metadata := &RunMetadata{RunID: "1", BenchmarkName: "cases", Hosts: cfg.Hosts, Custom: map[string]string{}}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	backgroundMgr := newBackgroundManager(logger)
+
+	if err := executeStages(context.Background(), cfg, "1", runDir, logger, io.Discard, metadata, backgroundMgr, nil); err != nil {
+		t.Fatalf("unexpected error executing stages: %v", err)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	got := string(data)
+	for _, want := range []string{"a:engine-a", "b:engine-b", "only:b"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "only:a") {
+		t.Fatalf("execute_only_for stage ran for wrong case: %q", got)
 	}
 }

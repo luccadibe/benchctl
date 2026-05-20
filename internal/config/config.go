@@ -26,6 +26,7 @@ const (
 type Config struct {
 	Benchmark Benchmark       `yaml:"benchmark" json:"benchmark"`
 	Hosts     map[string]Host `yaml:"hosts" json:"hosts"`
+	Cases     []Case          `yaml:"cases,omitempty" json:"cases,omitempty"`
 	Stages    []Stage         `yaml:"stages" json:"stages"`
 }
 
@@ -81,6 +82,12 @@ type Host struct {
 	KeyPassword string `yaml:"key_password,omitempty" json:"key_password,omitempty"`
 }
 
+// Case describes a comparison benchmark case.
+type Case struct {
+	Name string            `yaml:"name" json:"name"`
+	Env  map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+}
+
 // Stage is a step in the workflow.
 type Stage struct {
 	Name    string   `yaml:"name" json:"name"`
@@ -93,6 +100,8 @@ type Stage struct {
 	Shell string `yaml:"shell,omitempty" json:"shell,omitempty"`
 	// Whether the stage should be skipped.
 	Skip bool `yaml:"skip,omitempty" json:"skip,omitempty"`
+	// ExecuteOnlyFor limits a stage to one case name when cases are configured.
+	ExecuteOnlyFor string `yaml:"execute_only_for,omitempty" json:"execute_only_for,omitempty"`
 	// Whether the stage should be ran in the background, allowing execution to continue with other stages.
 	// Stages running in the background will be sent a SIGTERM when the last non-background
 	// task is executed.
@@ -152,6 +161,19 @@ func validateConfig(cfg *Config) error {
 	hostAliases["local"] = struct{}{}
 
 	stageNames := map[string]int{}
+	caseNames := map[string]int{}
+	for i, benchmarkCase := range cfg.Cases {
+		name := strings.TrimSpace(benchmarkCase.Name)
+		if name == "" {
+			errs = append(errs, fmt.Sprintf("cases[%d].name must be set", i))
+			continue
+		}
+		if previous, exists := caseNames[name]; exists {
+			errs = append(errs, fmt.Sprintf("cases[%d].name duplicates cases[%d] (%s)", i, previous, name))
+			continue
+		}
+		caseNames[name] = i
+	}
 	for i := range cfg.Stages {
 		st := &cfg.Stages[i]
 		if strings.TrimSpace(st.Name) == "" {
@@ -193,6 +215,13 @@ func validateConfig(cfg *Config) error {
 		hasScript := strings.TrimSpace(st.Script) != ""
 		if hasCmd == hasScript {
 			errs = append(errs, "exactly one of command or script must be set")
+		}
+		if strings.TrimSpace(st.ExecuteOnlyFor) != "" {
+			if len(cfg.Cases) == 0 {
+				errs = append(errs, fmt.Sprintf("stages[%d].execute_only_for requires cases", i))
+			} else if _, ok := caseNames[st.ExecuteOnlyFor]; !ok {
+				errs = append(errs, fmt.Sprintf("stages[%d].execute_only_for references unknown case '%s'", i, st.ExecuteOnlyFor))
+			}
 		}
 
 		// health check validation

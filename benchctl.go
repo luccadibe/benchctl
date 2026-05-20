@@ -14,6 +14,7 @@ type (
 	LoggingConfig = config.LoggingConfig
 	GitConfig     = config.GitConfig
 	Host          = config.Host
+	Case          = config.Case
 	Stage         = config.Stage
 	HealthCheck   = config.HealthCheck
 	Output        = config.Output
@@ -39,6 +40,7 @@ var (
 	WithLogging     = config.WithLogging
 	WithGit         = config.WithGit
 	WithHost        = config.WithHost
+	WithCase        = config.WithCase
 	WithStage       = config.WithStage
 	SSHHost         = config.SSHHost
 	NewStage        = config.NewStage
@@ -48,6 +50,7 @@ var (
 	RunScript       = config.RunScript
 	StageShell      = config.StageShell
 	Skip            = config.Skip
+	ExecuteOnlyFor  = config.ExecuteOnlyFor
 	Background      = config.Background
 	WithHealthCheck = config.WithHealthCheck
 	WithOutput      = config.WithOutput

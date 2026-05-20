@@ -130,6 +130,50 @@ stages:
 	}
 }
 
+func TestCasesAndExecuteOnlyForValidation(t *testing.T) {
+	yaml := `
+benchmark:
+  name: cases
+  output_dir: ./results
+hosts:
+  local: {}
+cases:
+  - name: a
+    env:
+      ENGINE: a
+stages:
+  - name: run-a
+    command: echo hello
+    execute_only_for: a
+`
+	if _, err := ParseYAML([]byte(yaml)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExecuteOnlyForUnknownCase(t *testing.T) {
+	yaml := `
+benchmark:
+  name: cases
+  output_dir: ./results
+hosts:
+  local: {}
+cases:
+  - name: a
+stages:
+  - name: run-b
+    command: echo hello
+    execute_only_for: b
+`
+	_, err := ParseYAML([]byte(yaml))
+	if err == nil {
+		t.Fatalf("expected error for unknown case")
+	}
+	if !strings.Contains(err.Error(), "execute_only_for references unknown case") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestLoadConfig_BadHealthCheck validates error messages for invalid healthcheck configuration.
 func TestLoadConfig_BadHealthCheck(t *testing.T) {
 	cfgPath := filepath.Join("testdata", "3.yaml")
