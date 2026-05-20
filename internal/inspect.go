@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,9 +46,7 @@ func AddMetadata(runPath string, extraMetadata map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("error loading run metadata: %w", err)
 	}
-	for key, value := range extraMetadata {
-		runmd.Custom[key] = value
-	}
+	maps.Copy(runmd.Custom, extraMetadata)
 	metadataBytes, err := json.MarshalIndent(runmd, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshalling run metadata: %w", err)

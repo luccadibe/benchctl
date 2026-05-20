@@ -324,13 +324,13 @@ func createBoxPlot(p *gonumplot.Plot, data *CSVData, plot Plot) error {
 var seabornScript []byte
 
 type seabornSpec struct {
-	Type    string                 `json:"type"`
-	Title   string                 `json:"title"`
-	X       string                 `json:"x"`
-	Y       string                 `json:"y"`
-	Format  string                 `json:"format"`
-	GroupBy string                 `json:"groupby,omitempty"`
-	Opts    map[string]interface{} `json:"opts,omitempty"`
+	Type    string         `json:"type"`
+	Title   string         `json:"title"`
+	X       string         `json:"x"`
+	Y       string         `json:"y"`
+	Format  string         `json:"format"`
+	GroupBy string         `json:"groupby,omitempty"`
+	Opts    map[string]any `json:"opts,omitempty"`
 	// Optional timestamp parsing hints derived from data_schema
 	XTimeFormat string `json:"x_time_format,omitempty"`
 	XTimeUnit   string `json:"x_time_unit,omitempty"`

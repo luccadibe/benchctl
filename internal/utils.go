@@ -10,7 +10,7 @@ import (
 // If after maxAttempts the function still returns an error, it returns the zero value of T and the error.
 func CallWithRetry[T any](ctx context.Context, fn func() (T, error), maxAttempts int, backoff time.Duration) (T, error) {
 	var lastErr error
-	for i := 0; i < maxAttempts; i++ {
+	for i := range maxAttempts {
 		t, err := fn()
 		if err == nil {
 			return t, nil
