@@ -104,7 +104,7 @@ stages:
 ### Logging
 
 benchctl writes colored human-readable logs to the terminal and JSON logs to `benchctl.ndjson` inside each run directory by default.
-Set `benchmark.logging.path` to choose a different JSON log path and `benchmark.logging.level` to `debug`, `info`, `warn`, or `error`.
+Set `benchmark.logging.path` to choose a different JSON log path, `benchmark.logging.level` to `debug`, `info`, `warn`, or `error`, and optionally `benchmark.logging.time_format` for the console timestamp (Go time layout; default `15:04:05`).
 
 ### Git Metadata
 

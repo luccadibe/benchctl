@@ -81,6 +81,7 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	logger.Info("run started", "run_id", runID, "run_dir", runDir)
 	gitMetadata, err := CaptureGitMetadata(ctx, cfg, runDir)
 	if err != nil {
+		logError(logger, "git metadata capture failed", err, "run_id", runID)
 		return nil, err
 	}
 	metadata.Git = gitMetadata
@@ -93,17 +94,18 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	stageErr := executeStages(ctx, cfg, runID, runDir, logger, logWriter, metadata, backgroundMgr, envVars)
 	stopErr := backgroundMgr.StopAll(ctx, runDir)
 	if stageErr != nil {
-		if stopErr != nil {
-			logErrorf(logger, "stopping background stages: %v", stopErr)
-		}
-		return nil, fmt.Errorf("workflow failed: %w", errors.Join(stageErr, stopErr))
+		joined := errors.Join(stageErr, stopErr)
+		logError(logger, "workflow failed", joined, "run_id", runID)
+		return nil, fmt.Errorf("workflow failed: %w", joined)
 	}
 	if stopErr != nil {
+		logError(logger, "stop background stages failed", stopErr, "run_id", runID)
 		return nil, fmt.Errorf("stop background stages: %w", stopErr)
 	}
 
 	metadata.EndTime = time.Now()
 	if err := saveMetadata(metadata, runDir); err != nil {
+		logError(logger, "save metadata failed", err, "run_id", runID)
 		return nil, err
 	}
 
@@ -150,19 +152,24 @@ func executeStages(
 				host, ok := cfg.Hosts[hostAlias]
 				if !ok {
 					if hostAlias != "local" {
-						return fmt.Errorf("stage %s references unknown host %s", stage.Name, hostAlias)
+						err := fmt.Errorf("stage %s references unknown host %s", stage.Name, hostAlias)
+						logError(logger, "stage failed", err, "stage", stage.Name, "case", benchmarkCase.Name, "host", hostAlias)
+						return err
 					}
 					host = config.Host{}
 				}
 
 				client, err := openExecutionClient(host)
 				if err != nil {
-					return fmt.Errorf("error creating execution client for stage %s: %w", stage.Name, err)
+					err = fmt.Errorf("error creating execution client for stage %s: %w", stage.Name, err)
+					logError(logger, "stage failed", err, "stage", stage.Name, "case", benchmarkCase.Name, "host", hostAlias)
+					return err
 				}
 
 				commandBody, err := prepareStageCommand(ctx, stage, host, runID, client)
 				if err != nil {
 					_ = client.Close()
+					logError(logger, "stage failed", err, "stage", stage.Name, "case", benchmarkCase.Name, "host", hostAlias)
 					return err
 				}
 
@@ -175,6 +182,7 @@ func executeStages(
 					pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
 					_ = client.Close()
 					if err != nil {
+						logError(logger, "stage failed", err, "stage", stage.Name, "case", benchmarkCase.Name, "host", hostAlias)
 						return err
 					}
 					backgroundMgr.Add(backgroundStage{stage: stage, host: host, outputEnv: stageEnv, pid: pid})
@@ -196,7 +204,9 @@ func executeStages(
 						logger.Info("stage captured output", "stage", stage.Name, "output", result.Output)
 					}
 					_ = client.Close()
-					return fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
+					stageErr := fmt.Errorf("stage %s failed: %w (exit code: %d)", stage.Name, err, result.ExitCode)
+					logError(logger, "stage failed", stageErr, "stage", stage.Name, "case", benchmarkCase.Name, "host", hostAlias, "exit_code", result.ExitCode)
+					return stageErr
 				}
 
 				if logStageOutput {
@@ -207,6 +217,7 @@ func executeStages(
 				if stage.HealthCheck != nil {
 					if err := runHealthCheck(ctx, client, stage, logger); err != nil {
 						_ = client.Close()
+						logError(logger, "health check failed", err, "stage", stage.Name, "case", benchmarkCase.Name, "host", hostAlias)
 						return err
 					}
 				}
@@ -214,6 +225,7 @@ func executeStages(
 				if len(stage.Outputs) > 0 {
 					if err := collectStageOutputs(ctx, client, runDir, stage, logger, stageEnv); err != nil {
 						_ = client.Close()
+						logError(logger, "stage failed", err, "stage", stage.Name, "case", benchmarkCase.Name, "host", hostAlias)
 						return err
 					}
 				}
@@ -292,7 +304,9 @@ func runHealthCheck(ctx context.Context, client execution.ExecutionClient, stage
 	hc := stage.HealthCheck
 	timeout, err := time.ParseDuration(hc.Timeout)
 	if err != nil {
-		return fmt.Errorf("error parsing health check timeout for stage %s: %w", stage.Name, err)
+		err = fmt.Errorf("error parsing health check timeout for stage %s: %w", stage.Name, err)
+		logError(logger, "health check failed", err, "stage", stage.Name)
+		return err
 	}
 	logger.Info("health check started", "stage", stage.Name, "type", hc.Type)
 	switch hc.Type {
@@ -301,14 +315,20 @@ func runHealthCheck(ctx context.Context, client execution.ExecutionClient, stage
 			return client.CheckPort(ctx, hc.Target, timeout)
 		}, hc.Retries, time.Second)
 		if err != nil {
-			return fmt.Errorf("health check for stage %s failed: %w", stage.Name, err)
+			err = fmt.Errorf("health check for stage %s failed: %w", stage.Name, err)
+			logError(logger, "health check failed", err, "stage", stage.Name, "type", hc.Type)
+			return err
 		}
 		if !healthy {
-			return fmt.Errorf("health check for stage %s failed: port %s is not listening", stage.Name, hc.Target)
+			err := fmt.Errorf("health check for stage %s failed: port %s is not listening", stage.Name, hc.Target)
+			logError(logger, "health check failed", err, "stage", stage.Name, "type", hc.Type, "target", hc.Target)
+			return err
 		}
 		logger.Info("health check passed", "stage", stage.Name, "type", hc.Type, "target", hc.Target)
 	default:
-		return fmt.Errorf("unknown health check type for stage %s: %s", stage.Name, hc.Type)
+		err := fmt.Errorf("unknown health check type for stage %s: %s", stage.Name, hc.Type)
+		logError(logger, "health check failed", err, "stage", stage.Name, "type", hc.Type)
+		return err
 	}
 	return nil
 }
@@ -352,7 +372,13 @@ func createLogger(cfg *config.Config, runDir string) (*slog.Logger, io.Writer, f
 
 	console := os.Stdout
 	color := term.IsTerminal(int(console.Fd()))
-	handlers := []slog.Handler{newConsoleHandler(console, levelVar, color)}
+	timeFormat := defaultConsoleTimeFormat
+	if cfg.Benchmark.Logging != nil {
+		if tf := strings.TrimSpace(cfg.Benchmark.Logging.TimeFormat); tf != "" {
+			timeFormat = tf
+		}
+	}
+	handlers := []slog.Handler{newConsoleHandler(console, levelVar, color, timeFormat)}
 	closeFunc := func() {}
 	logWriter := io.Writer(console)
 

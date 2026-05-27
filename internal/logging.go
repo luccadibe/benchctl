@@ -5,22 +5,68 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
-	"time"
+
+	"golang.org/x/term"
 )
 
-type consoleHandler struct {
-	w      io.Writer
-	level  slog.Leveler
-	color  bool
-	attrs  []slog.Attr
-	groups []string
-	mu     *sync.Mutex
+const defaultConsoleTimeFormat = "15:04:05"
+
+const (
+	ansiReset   = "\x1b[0m"
+	ansiDim     = "\x1b[2m"
+	ansiRed     = "\x1b[31m"
+	ansiGreen   = "\x1b[32m"
+	ansiYellow  = "\x1b[33m"
+	ansiBlue    = "\x1b[34m"
+	ansiMagenta = "\x1b[35m"
+	ansiCyan    = "\x1b[36m"
+	ansiGray    = "\x1b[90m"
+)
+
+var attrKeyColors = map[string]string{
+	"stage":       ansiMagenta,
+	"output":      ansiYellow,
+	"case":        ansiBlue,
+	"host":        ansiGreen,
+	"run_id":      ansiGray,
+	"run_dir":     ansiGray,
+	"local_path":  ansiCyan,
+	"remote_path": ansiCyan,
+	"error":       ansiRed,
+	"exit_code":   ansiGray,
+	"commit":      ansiBlue,
+	"branch":      ansiBlue,
+	"dirty":       ansiYellow,
+	"pid":         ansiGray,
+	"type":        ansiCyan,
+	"target":      ansiCyan,
+	"index":       ansiGray,
+	"total":       ansiGray,
 }
 
-func newConsoleHandler(w io.Writer, level slog.Leveler, color bool) slog.Handler {
-	return &consoleHandler{w: w, level: level, color: color, mu: &sync.Mutex{}}
+type consoleHandler struct {
+	w          io.Writer
+	level      slog.Leveler
+	color      bool
+	timeFormat string
+	attrs      []slog.Attr
+	mu         *sync.Mutex
+}
+
+func newConsoleHandler(w io.Writer, level slog.Leveler, color bool, timeFormat string) slog.Handler {
+	if strings.TrimSpace(timeFormat) == "" {
+		timeFormat = defaultConsoleTimeFormat
+	}
+	return &consoleHandler{
+		w:          w,
+		level:      level,
+		color:      color,
+		timeFormat: timeFormat,
+		mu:         &sync.Mutex{},
+	}
 }
 
 func (h *consoleHandler) Enabled(_ context.Context, level slog.Level) bool {
@@ -36,16 +82,22 @@ func (h *consoleHandler) Handle(_ context.Context, record slog.Record) error {
 	if h.color {
 		level = colorLevel(record.Level, level)
 	}
+
 	fields := make([]string, 0, len(h.attrs)+record.NumAttrs())
 	for _, attr := range h.attrs {
-		fields = append(fields, formatAttr(attr))
+		fields = append(fields, formatAttr(attr, h.color))
 	}
 	record.Attrs(func(attr slog.Attr) bool {
-		fields = append(fields, formatAttr(attr))
+		fields = append(fields, formatAttr(attr, h.color))
 		return true
 	})
 
-	line := fmt.Sprintf("%s %-5s %s", record.Time.Format(time.RFC3339), level, record.Message)
+	timestamp := record.Time.Format(h.timeFormat)
+	if h.color {
+		timestamp = ansiDim + timestamp + ansiReset
+	}
+
+	line := fmt.Sprintf("%s %-5s %s", timestamp, level, record.Message)
 	if len(fields) > 0 {
 		line += " " + strings.Join(fields, " ")
 	}
@@ -63,38 +115,45 @@ func (h *consoleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &next
 }
 
-func (h *consoleHandler) WithGroup(name string) slog.Handler {
+func (h *consoleHandler) WithGroup(string) slog.Handler {
 	next := *h
-	next.groups = append(append([]string(nil), h.groups...), name)
 	return &next
 }
 
-func formatAttr(attr slog.Attr) string {
+func formatAttr(attr slog.Attr, color bool) string {
 	attr.Value = attr.Value.Resolve()
-	return fmt.Sprintf("%s=%v", attr.Key, attr.Value.Any())
+	key := attr.Key
+	value := fmt.Sprintf("%v", attr.Value.Any())
+	if !color {
+		return fmt.Sprintf("%s=%s", key, value)
+	}
+	keyColor, ok := attrKeyColors[key]
+	if !ok {
+		return fmt.Sprintf("%s=%s", key, value)
+	}
+	return fmt.Sprintf("%s%s%s%s=%s", keyColor, key, ansiReset, keyColor, value+ansiReset)
 }
 
 func colorLevel(level slog.Level, text string) string {
 	switch {
 	case level >= slog.LevelError:
-		return "\x1b[31m" + text + "\x1b[0m"
+		return ansiRed + text + ansiReset
 	case level >= slog.LevelWarn:
-		return "\x1b[33m" + text + "\x1b[0m"
+		return ansiYellow + text + ansiReset
 	case level <= slog.LevelDebug:
-		return "\x1b[36m" + text + "\x1b[0m"
+		return ansiCyan + text + ansiReset
 	default:
-		return "\x1b[32m" + text + "\x1b[0m"
+		return ansiGreen + text + ansiReset
 	}
 }
 
-func logInfof(logger *slog.Logger, format string, args ...any) {
-	logger.Info(fmt.Sprintf(format, args...))
+func logError(logger *slog.Logger, msg string, err error, attrs ...any) {
+	args := append(append([]any(nil), attrs...), "error", err)
+	logger.Error(msg, args...)
 }
 
-func logWarnf(logger *slog.Logger, format string, args ...any) {
-	logger.Warn(fmt.Sprintf(format, args...))
-}
-
-func logErrorf(logger *slog.Logger, format string, args ...any) {
-	logger.Error(fmt.Sprintf(format, args...))
+// ConfigureDefaultLogger installs a human-readable slog logger on stderr.
+func ConfigureDefaultLogger() {
+	color := term.IsTerminal(int(os.Stderr.Fd()))
+	slog.SetDefault(slog.New(newConsoleHandler(os.Stderr, slog.LevelInfo, color, defaultConsoleTimeFormat)))
 }
