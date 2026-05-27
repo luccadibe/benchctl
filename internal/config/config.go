@@ -35,10 +35,12 @@ type Benchmark struct {
 	Sync *SyncConfig `yaml:"sync,omitempty" json:"sync,omitempty"`
 }
 
-// LoggingConfig holds the logging configuration. If no path is provided, logs are written to stdout.
+// LoggingConfig controls slog level and the JSON log file path.
+// Human-readable logs always go to stdout; JSON logs default to benchctl.ndjson in the run directory.
 type LoggingConfig struct {
-	Level string `yaml:"level" json:"level"`
-	Path  string `yaml:"path,omitempty" json:"path,omitempty"`
+	Level      string `yaml:"level" json:"level"`
+	Path       string `yaml:"path,omitempty" json:"path,omitempty"`
+	TimeFormat string `yaml:"time_format,omitempty" json:"time_format,omitempty"`
 }
 
 // GitConfig holds automatic git metadata capture settings.

@@ -59,11 +59,14 @@ func (m *backgroundManager) stopStage(ctx context.Context, runDir string, record
 
 	client, err := openExecutionClient(record.host)
 	if err != nil {
-		return fmt.Errorf("background stage %s: %w", record.stage.Name, err)
+		err = fmt.Errorf("background stage %s: %w", record.stage.Name, err)
+		m.logger.Error("background stage stop failed", "stage", record.stage.Name, "error", err)
+		return err
 	}
 	defer client.Close()
 
 	if err := terminatePID(ctx, client, record.stage.Name, record.pid, m.logger); err != nil {
+		m.logger.Error("background stage stop failed", "stage", record.stage.Name, "pid", record.pid, "error", err)
 		return err
 	}
 

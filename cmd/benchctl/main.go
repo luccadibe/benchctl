@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/luccadibe/benchctl/internal"
 	"github.com/luccadibe/benchctl/internal/config"
 	"github.com/luccadibe/benchctl/pkg/bench"
 	"github.com/luccadibe/benchctl/pkg/run"
@@ -52,6 +53,7 @@ var skipFlag = &cli.StringSliceFlag{
 }
 
 func main() {
+	internal.ConfigureDefaultLogger()
 
 	cmd := &cli.Command{
 		Name:  "benchctl",
@@ -261,7 +263,8 @@ func main() {
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		log.Fatal(err)
+		slog.Error("command failed", "error", err)
+		os.Exit(1)
 	}
 }
 
