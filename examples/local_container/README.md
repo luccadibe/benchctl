@@ -42,14 +42,9 @@ The benchmark configuration includes four stages:
 3. **run-load-test** - Executes the load generator and collects CSV data
 4. **cleanup-container** - Stops and removes the container
 
-## Data Schema
+## Collected Outputs
 
-The benchmark collects the following metrics:
-- `timestamp` - Unix timestamp of the request
-- `latency_ms` - Server-reported processing time in milliseconds
-- `status` - Request status (success/error)
-- `response_time_ms` - Total response time including network latency
-- `task_type` - Type of task (0, 1, 2)
+The benchmark collects CSV files from the load generator and resource monitor into the run directory via `outputs`. Analyze them with your own tools (for example the included `scripts/analyse_csv.py`).
 
 ## Running the Example
 

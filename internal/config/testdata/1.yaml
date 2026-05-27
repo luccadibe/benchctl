@@ -24,14 +24,3 @@ stages:
     outputs:
       - name: benchmark_data
         remote_path: /tmp/data.csv
-        data_schema:
-          format: csv
-          columns:
-            - name: timestamp
-              type: timestamp
-              unit: ns
-            - name: latency_ms
-              type: float
-              unit: ms
-            - name: status
-              type: string

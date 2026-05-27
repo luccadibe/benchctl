@@ -31,20 +31,14 @@ func TestLoadConfig_Success(t *testing.T) {
 	if len(cfg.Stages) == 0 {
 		t.Fatalf("expected stages to be non-empty")
 	}
-	// Check that data_schema is now in outputs
+	// Check outputs in test fixture
 	if len(cfg.Stages) > 1 && len(cfg.Stages[1].Outputs) > 0 {
 		output := cfg.Stages[1].Outputs[0]
 		if output.Name == "" {
 			t.Fatalf("expected output name to be set")
 		}
-		if output.DataSchema == nil {
-			t.Fatalf("expected data_schema to be set in output")
-		}
-		if output.DataSchema.Format != "csv" {
-			t.Fatalf("expected data_schema.format to be csv, got %s", output.DataSchema.Format)
-		}
-		if len(output.DataSchema.Columns) == 0 {
-			t.Fatalf("expected data_schema.columns to be non-empty")
+		if output.RemotePath == "" {
+			t.Fatalf("expected remote_path to be set")
 		}
 	}
 }
@@ -196,90 +190,5 @@ func TestLoadConfig_BadHealthCheck(t *testing.T) {
 	}
 	if !strings.Contains(msg, "retries must be >= 0") {
 		t.Fatalf("expected retries validation error, got: %v", msg)
-	}
-}
-
-// TestTimestampFormatValid ensures timestamp format is accepted when valid.
-func TestTimestampFormatValid(t *testing.T) {
-	yaml := `
-benchmark:
-  name: ts-format-valid
-  output_dir: ./results
-hosts:
-  local: {}
-stages:
-  - name: gen
-    host: local
-    script: gen.sh
-    outputs:
-      - name: data
-        remote_path: /tmp/data.csv
-        data_schema:
-          format: csv
-          columns:
-            - name: timestamp
-              type: timestamp
-              unit: s
-              format: unix
-            - name: value
-              type: float
-`
-	cfg, err := ParseYAML([]byte(yaml))
-	if err != nil {
-		t.Fatalf("unexpected error parsing valid timestamp format: %v", err)
-	}
-	if len(cfg.Stages) == 0 || len(cfg.Stages[0].Outputs) == 0 || cfg.Stages[0].Outputs[0].DataSchema == nil {
-		t.Fatalf("expected stage/output/schema to be present")
-	}
-	cols := cfg.Stages[0].Outputs[0].DataSchema.Columns
-	if len(cols) == 0 {
-		t.Fatalf("expected columns in data_schema")
-	}
-	var timestampCol *DataColumn
-	for i := range cols {
-		if cols[i].Name == "timestamp" {
-			timestampCol = &cols[i]
-			break
-		}
-	}
-	if timestampCol == nil {
-		t.Fatalf("expected timestamp column in data_schema")
-	}
-	if strings.ToLower(timestampCol.Format) != "unix" {
-		t.Fatalf("expected timestamp format 'unix', got %q", timestampCol.Format)
-	}
-}
-
-// TestTimestampFormatInvalid ensures invalid timestamp format triggers validation error.
-func TestTimestampFormatInvalid(t *testing.T) {
-	yaml := `
-benchmark:
-  name: ts-format-invalid
-  output_dir: ./results
-hosts:
-  local: {}
-stages:
-  - name: gen
-    host: local
-    script: gen.sh
-    outputs:
-      - name: data
-        remote_path: /tmp/data.csv
-        data_schema:
-          format: csv
-          columns:
-            - name: timestamp
-              type: timestamp
-              unit: s
-              format: not_a_real_format
-            - name: value
-              type: float
-`
-	_, err := ParseYAML([]byte(yaml))
-	if err == nil {
-		t.Fatalf("expected error for invalid timestamp format")
-	}
-	if !strings.Contains(err.Error(), "data_schema.columns[0].format must be one of") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }

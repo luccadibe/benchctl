@@ -30,6 +30,14 @@ test:
 
 
 # Example commands
+example-library:
+    @echo "Running library example..."
+    cd examples/library && go run .
+
+example-library-clean:
+    @echo "Cleaning up library example..."
+    cd examples/library && rm -rf results/
+
 example-local-container:
     @echo "Running local container example..."
     cd examples/local_container && ../../benchctl --config benchmark.yaml run --metadata "branch"="main" --metadata "commit"="example-run"

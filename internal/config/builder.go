@@ -170,36 +170,8 @@ func WithOutput(output Output) StageOption {
 }
 
 // NewOutput creates an output collection rule.
-func NewOutput(name, remotePath string, schema *DataSchema) Output {
-	return Output{Name: name, RemotePath: remotePath, DataSchema: schema}
-}
-
-// NewCSVSchema creates a CSV data schema.
-func NewCSVSchema(columns ...DataColumn) *DataSchema {
-	return &DataSchema{Format: "csv", Columns: append([]DataColumn(nil), columns...)}
-}
-
-// Column creates a data schema column.
-func Column(name string, dataType DataType, options ...func(*DataColumn)) DataColumn {
-	column := DataColumn{Name: name, Type: dataType}
-	for _, option := range options {
-		option(&column)
-	}
-	return column
-}
-
-// Unit sets a data column unit.
-func Unit(unit string) func(*DataColumn) {
-	return func(column *DataColumn) {
-		column.Unit = unit
-	}
-}
-
-// TimeFormat sets a timestamp column format.
-func TimeFormat(format string) func(*DataColumn) {
-	return func(column *DataColumn) {
-		column.Format = format
-	}
+func NewOutput(name, remotePath string) Output {
+	return Output{Name: name, RemotePath: remotePath}
 }
 
 // Validate validates a config built with Go helpers.

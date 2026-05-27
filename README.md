@@ -23,7 +23,7 @@ I also looked into Apache Airflow, but it was too complex for this use case.
 - **Distributed Execution**: Run benchmarks across multiple remote hosts or locally
 - **YAML Configuration**: Declarative workflow definition with hosts and stages
 - **Health Checks**: Built-in readiness detection (port, HTTP, file, process, command)
-- **Data Collection**: Automatic file collection via SCP with schema validation
+- **Data Collection**: Automatic file collection via SCP
 - **Background Stages**: Keep monitoring commands running alongside your benchmark until all your non-background stages finish
 - **Metadata Tracking**: Custom metadata support for benchmark runs.
 - **Result Management**: Organized storage with run IDs and comprehensive metadata, so you always know exactly which parameters and configuration was used for a specific benchmark run.
@@ -99,16 +99,6 @@ stages:
     outputs:
       - name: results
         remote_path: /tmp/results.csv
-        data_schema:
-          format: csv
-          columns:
-            - name: timestamp
-              type: timestamp
-              unit: s
-              format: unix
-            - name: latency_ms
-              type: float
-              unit: ms
 ```
 
 ### Logging
@@ -254,24 +244,6 @@ Then run:
 
 ```bash
 benchctl sync push --config benchmark.yaml
-```
-
-### Data Schema
-Define CSV column types for validation and result inspection:
-
-```yaml
-data_schema:
-  format: csv
-  columns:
-    - name: timestamp
-      type: timestamp
-      unit: s
-      format: unix   # optional; supported: unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601
-    - name: latency_ms
-      type: float
-      unit: ms
-    - name: status
-      type: string
 ```
 
 ## Usage

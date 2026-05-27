@@ -16,9 +16,3 @@ stages:
     outputs:
       - name: test_output
         remote_path: /config/test_output.txt
-        data_schema:
-          format: csv
-          columns:
-            - name: timestamp
-              type: timestamp
-
