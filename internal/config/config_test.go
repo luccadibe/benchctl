@@ -140,8 +140,15 @@ stages:
     command: echo hello
     execute_only_for: a
 `
-	if _, err := ParseYAML([]byte(yaml)); err != nil {
+	cfg, err := ParseYAML([]byte(yaml))
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Stages[0].ExecuteOnlyFor != "a" {
+		t.Fatalf("expected execute_only_for to be preserved, got %q", cfg.Stages[0].ExecuteOnlyFor)
+	}
+	if cfg.Cases[0].Env["ENGINE"] != "a" {
+		t.Fatalf("expected case env to be preserved")
 	}
 }
 
@@ -190,5 +197,174 @@ func TestLoadConfig_BadHealthCheck(t *testing.T) {
 	}
 	if !strings.Contains(msg, "retries must be >= 0") {
 		t.Fatalf("expected retries validation error, got: %v", msg)
+	}
+}
+
+func TestParseYAMLErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		contain string
+	}{
+		{
+			name: "unknown stage host",
+			yaml: `
+benchmark:
+  name: bad-host
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    host: missing
+    command: echo hello
+`,
+			contain: "references unknown host",
+		},
+		{
+			name: "duplicate case names",
+			yaml: `
+benchmark:
+  name: dup-cases
+  output_dir: ./results
+hosts:
+  local: {}
+cases:
+  - name: a
+  - name: a
+stages:
+  - name: run
+    command: echo hello
+`,
+			contain: "cases[1].name duplicates",
+		},
+		{
+			name: "duplicate output names",
+			yaml: `
+benchmark:
+  name: dup-outputs
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: collect-a
+    command: echo a
+    outputs:
+      - name: metrics
+        remote_path: /tmp/a.csv
+  - name: collect-b
+    command: echo b
+    outputs:
+      - name: metrics
+        remote_path: /tmp/b.csv
+`,
+			contain: "output name 'metrics' is not unique",
+		},
+		{
+			name: "empty stage name",
+			yaml: `
+benchmark:
+  name: empty-stage
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: "   "
+    command: echo hello
+`,
+			contain: "stages[0].name must be set",
+		},
+		{
+			name: "empty output name",
+			yaml: `
+benchmark:
+  name: empty-output
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: collect
+    command: echo hello
+    outputs:
+      - name: " "
+        remote_path: /tmp/out.csv
+`,
+			contain: "outputs[0].name must be set",
+		},
+		{
+			name: "execute_only_for without cases",
+			yaml: `
+benchmark:
+  name: no-cases
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    command: echo hello
+    execute_only_for: a
+`,
+			contain: "execute_only_for requires cases",
+		},
+		{
+			name: "duplicate stage hosts",
+			yaml: `
+benchmark:
+  name: dup-hosts
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    hosts: [local, local]
+    command: echo hello
+`,
+			contain: "hosts contains duplicate host",
+		},
+		{
+			name: "disallowed output local_path",
+			yaml: `
+benchmark:
+  name: local-path
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: collect
+    command: echo hello
+    outputs:
+      - name: metrics
+        remote_path: /tmp/metrics.csv
+        local_path: ./metrics.csv
+`,
+			contain: "local_path is not allowed",
+		},
+		{
+			name: "sync without remote",
+			yaml: `
+benchmark:
+  name: sync
+  output_dir: ./results
+  sync: {}
+hosts:
+  local: {}
+stages:
+  - name: run
+    command: echo hello
+`,
+			contain: "benchmark.sync.remote must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseYAML([]byte(tt.yaml))
+			if err == nil {
+				t.Fatal("expected parse error")
+			}
+			if !strings.Contains(err.Error(), tt.contain) {
+				t.Fatalf("expected error containing %q, got: %v", tt.contain, err)
+			}
+		})
 	}
 }

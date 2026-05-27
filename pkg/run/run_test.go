@@ -25,3 +25,14 @@ func TestRuntimeSkipDoesNotMutateBench(t *testing.T) {
 		t.Fatalf("expected original bench stage to remain unskipped")
 	}
 }
+
+func TestRuntimeSkipUnknownStage(t *testing.T) {
+	cfg := bench.New("skip",
+		bench.WithResultsPath("./results"),
+		bench.WithStages(bench.Stage("setup", bench.Command("echo setup"))),
+	).Config()
+
+	if err := applyRuntimeSkip(cfg.Clone(), []string{"missing"}); err == nil {
+		t.Fatal("expected error for unknown stage")
+	}
+}

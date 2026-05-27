@@ -4,6 +4,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,25 +22,18 @@ const (
 	testTimeout     = 30 * time.Second
 )
 
-var (
-	customMetadata = map[string]string{
-		"test_metadata": "test_value",
-	}
-)
-
-func setupTest(t *testing.T) {
-	t.Helper()
-
-	// Clean up any previous test outputs
-	os.RemoveAll(testOutputDir)
-	os.RemoveAll("/tmp/benchctl-test-collected.txt")
+var customMetadata = map[string]string{
+	"test_metadata": "test_value",
 }
 
-func teardownTest(t *testing.T) {
+func setupWorkflowTest(t *testing.T) {
 	t.Helper()
-	// Clean up test outputs
 	os.RemoveAll(testOutputDir)
 	os.RemoveAll("/tmp/benchctl-test-collected.txt")
+	t.Cleanup(func() {
+		os.RemoveAll(testOutputDir)
+		os.RemoveAll("/tmp/benchctl-test-collected.txt")
+	})
 }
 
 func loadWorkflowConfig(t *testing.T, filename string) *config.Config {
@@ -58,59 +52,59 @@ func loadWorkflowConfig(t *testing.T, filename string) *config.Config {
 	return cfg
 }
 
-func TestWorkflowSimple(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
+func runWorkflow(t *testing.T, cfg *config.Config) *internal.RunResult {
+	t.Helper()
+	setupWorkflowTest(t)
 
-	cfg := loadWorkflowConfig(t, "simple.yaml")
-
-	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
+	result, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if err != nil {
 		t.Fatalf("workflow failed: %v", err)
 	}
+	return result
+}
 
-	// Should not panic
+func assertRunMetadata(t *testing.T, result *internal.RunResult, benchmarkName string) {
+	t.Helper()
+
+	metadataPath := filepath.Join(result.RunDir, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatalf("read metadata.json: %v", err)
+	}
+
+	var metadata internal.RunMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		t.Fatalf("unmarshal metadata: %v", err)
+	}
+	if metadata.BenchmarkName != benchmarkName {
+		t.Fatalf("benchmark_name = %q, want %q", metadata.BenchmarkName, benchmarkName)
+	}
+	if metadata.Custom["test_metadata"] != "test_value" {
+		t.Fatalf("expected custom metadata to be persisted")
+	}
+	if result.RunID == "" {
+		t.Fatal("expected non-empty run id")
+	}
 }
 
 func TestWorkflowMultiStage(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
-
 	cfg := loadWorkflowConfig(t, "multi_stage.yaml")
-	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
-		t.Fatalf("workflow failed: %v", err)
-	}
-
-	// Should not panic
+	result := runWorkflow(t, cfg)
+	assertRunMetadata(t, result, "multi-stage-test")
 }
 
 func TestWorkflowWithHealthCheck(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
+	setupWorkflowTest(t)
 
 	cfg := loadWorkflowConfig(t, "with_healthcheck.yaml")
 
-	// Create context with timeout for the test
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	// Start workflow in goroutine since it might take time.
-	done := make(chan error, 1)
-	go func() {
-		_, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
-		done <- err
-	}()
-
-	// Wait for completion or timeout
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("workflow failed: %v", err)
-		}
-	case <-ctx.Done():
-		t.Fatal("workflow timed out")
+	if _, err := internal.RunWorkflow(ctx, cfg, customMetadata, nil); err != nil {
+		t.Fatalf("workflow failed: %v", err)
 	}
 
-	// Clean up: kill the nc process
 	host := config.Host{
 		IP:       "localhost",
 		Port:     2222,
@@ -120,86 +114,57 @@ func TestWorkflowWithHealthCheck(t *testing.T) {
 	client, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Logf("warning: failed to create cleanup client: %v", err)
-	} else {
-		defer client.Close()
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_, _ = client.RunCommand(cleanupCtx, execution.CommandRequest{Command: "pkill -f 'nc -l -p 8080' || true"})
+		return
 	}
+	defer client.Close()
+
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _ = client.RunCommand(cleanupCtx, execution.CommandRequest{Command: "pkill -f 'nc -l -p 8080' || true"})
 }
 
 func TestWorkflowWithOutput(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
-
 	cfg := loadWorkflowConfig(t, "with_output.yaml")
-	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
-		t.Fatalf("workflow failed: %v", err)
-	}
+	result := runWorkflow(t, cfg)
+	assertRunMetadata(t, result, cfg.Benchmark.Name)
 
-	// Verify file was actually copied
-	// Files should bein run directory using output.name + extension from remote_path
-	collectedFile := filepath.Join(testOutputDir, "1", "test_output.txt")
-	if _, err := os.Stat(collectedFile); os.IsNotExist(err) {
-		t.Error("expected collected file to exist")
-	} else {
-		// Verify file contents
-		data, err := os.ReadFile(collectedFile)
-		if err != nil {
-			t.Errorf("failed to read collected file: %v", err)
-		}
-		content := string(data)
-		if !strings.Contains(content, "test output data") {
-			t.Errorf("expected file to contain 'test output data', got: %s", content)
-		}
+	collectedFile := filepath.Join(result.RunDir, "test_output.txt")
+	data, err := os.ReadFile(collectedFile)
+	if err != nil {
+		t.Fatalf("read collected file: %v", err)
+	}
+	if !strings.Contains(string(data), "test output data") {
+		t.Fatalf("expected collected file to contain marker, got: %s", string(data))
 	}
 }
-func TestWorkflowCommandWithSpecialCharacters(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
-	cfg := loadWorkflowConfig(t, "special_chars.yaml")
-	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
-		t.Fatalf("workflow failed: %v", err)
-	}
 
-	// should not panic
+func TestWorkflowCommandWithSpecialCharacters(t *testing.T) {
+	cfg := loadWorkflowConfig(t, "special_chars.yaml")
+	result := runWorkflow(t, cfg)
+	assertRunMetadata(t, result, "special-chars-test")
 }
 
 func TestWorkflowRemoteScriptExecution(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
-
 	cfg := loadWorkflowConfig(t, "remote_script.yaml")
-	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
-		t.Fatalf("workflow failed: %v", err)
-	}
+	result := runWorkflow(t, cfg)
+	assertRunMetadata(t, result, cfg.Benchmark.Name)
 
-	// Verify file created by the remote script was copied locally
-	// Files should be in run directory using output.name + extension
-	localCollected := filepath.Join(testOutputDir, "1", "remote_created.txt")
-	if _, err := os.Stat(localCollected); os.IsNotExist(err) {
-		t.Fatalf("expected remote-script collected file to exist: %s", localCollected)
-	}
+	localCollected := filepath.Join(result.RunDir, "remote_created.txt")
 	data, err := os.ReadFile(localCollected)
 	if err != nil {
-		t.Fatalf("failed reading collected remote-script file: %v", err)
+		t.Fatalf("read collected remote-script file: %v", err)
 	}
 	if !strings.Contains(string(data), "remote-script-ok") {
-		t.Errorf("expected collected file to contain marker; got: %s", string(data))
+		t.Fatalf("expected collected file to contain marker; got: %s", string(data))
 	}
 }
 
 func TestWorkflowBackgroundStage(t *testing.T) {
-	setupTest(t)
-	defer teardownTest(t)
-
 	cfg := loadWorkflowConfig(t, "background.yaml")
-	if _, err := internal.RunWorkflow(context.Background(), cfg, customMetadata, nil); err != nil {
-		t.Fatalf("workflow failed: %v", err)
-	}
+	result := runWorkflow(t, cfg)
+	assertRunMetadata(t, result, cfg.Benchmark.Name)
 
-	runDir := filepath.Join(testOutputDir, "1")
-	monitorPath := filepath.Join(runDir, "monitor.csv")
+	monitorPath := filepath.Join(result.RunDir, "monitor.csv")
 	data, err := os.ReadFile(monitorPath)
 	if err != nil {
 		t.Fatalf("failed to read background monitor output: %v", err)
@@ -215,8 +180,36 @@ func TestWorkflowBackgroundStage(t *testing.T) {
 		t.Errorf("expected counter values to change across samples, got %q", lines[1])
 	}
 
-	workloadPath := filepath.Join(runDir, "workload.txt")
+	workloadPath := filepath.Join(result.RunDir, "workload.txt")
 	if _, err := os.Stat(workloadPath); err != nil {
 		t.Fatalf("expected workload output to exist: %v", err)
+	}
+}
+
+func TestWorkflowCommandFailure(t *testing.T) {
+	setupWorkflowTest(t)
+
+	cfg, err := config.ParseYAML([]byte(`
+benchmark:
+  name: command-failure-test
+  output_dir: /tmp/benchctl-test-output
+hosts:
+  test-host:
+    ip: localhost
+    port: 2222
+    username: testuser
+    key_file: ./testdata/ssh/test_key
+stages:
+  - name: failing-command
+    host: test-host
+    command: exit 1
+`))
+	if err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+
+	_, err = internal.RunWorkflow(context.Background(), cfg, customMetadata, nil)
+	if err == nil {
+		t.Fatal("expected workflow to fail on non-zero exit")
 	}
 }

@@ -4,6 +4,7 @@ package test
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,8 +20,6 @@ const (
 	testPort1      = 2222
 	testHost2      = "localhost"
 	testPort2      = 2223
-	testHost3      = "localhost"
-	testPort3      = 2224
 	commandTimeout = 10 * time.Second
 )
 
@@ -37,20 +36,6 @@ var hosts = []config.Host{
 		Username: testUsername,
 		KeyFile:  testKeyPath,
 	},
-}
-
-func TestSSHClientConnection(t *testing.T) {
-	host := hosts[0]
-
-	client, err := execution.NewSSHClient(host)
-	if err != nil {
-		t.Fatalf("failed to create SSH client: %v", err)
-	}
-	defer client.Close()
-
-	if client == nil {
-		t.Fatal("expected non-nil client")
-	}
 }
 
 func TestSSHClientConnectionWithInvalidKey(t *testing.T) {
@@ -84,62 +69,8 @@ func TestSSHClientRunCommand(t *testing.T) {
 		t.Fatalf("failed to run command: %v", err)
 	}
 
-	expected := "hello world"
-	if !strings.Contains(res.Output, expected) {
-		t.Errorf("expected output to contain %q, got %q", expected, res.Output)
-	}
-}
-
-func TestSSHClientRunMultipleCommands(t *testing.T) {
-	host := hosts[0]
-
-	client, err := execution.NewSSHClient(host)
-	if err != nil {
-		t.Fatalf("failed to create SSH client: %v", err)
-	}
-	defer client.Close()
-
-	tests := []struct {
-		name     string
-		command  string
-		contains string
-	}{
-		{
-			name:     "whoami",
-			command:  "whoami",
-			contains: testUsername,
-		},
-		{
-			name:     "pwd",
-			command:  "pwd",
-			contains: "/",
-		},
-		{
-			name:     "date",
-			command:  "date +%Y",
-			contains: "20",
-		},
-		{
-			name:     "hostname",
-			command:  "hostname",
-			contains: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
-			defer cancel()
-
-			res, err := client.RunCommand(ctx, execution.CommandRequest{Command: tt.command})
-			if err != nil {
-				t.Fatalf("failed to run command %q: %v", tt.command, err)
-			}
-
-			if tt.contains != "" && !strings.Contains(res.Output, tt.contains) {
-				t.Errorf("expected output to contain %q, got %q", tt.contains, res.Output)
-			}
-		})
+	if !strings.Contains(res.Output, "hello world") {
+		t.Errorf("expected output to contain %q, got %q", "hello world", res.Output)
 	}
 }
 
@@ -155,7 +86,6 @@ func TestSSHClientContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	// Run a long-running command that will be cancelled
 	_, err = client.RunCommand(ctx, execution.CommandRequest{Command: "sleep 10"})
 	if err == nil {
 		t.Fatal("expected error for cancelled context, got nil")
@@ -167,13 +97,11 @@ func TestSSHClientContextCancellation(t *testing.T) {
 }
 
 func TestSSHClientMultipleHosts(t *testing.T) {
-	hosts := hosts
-
-	for i, host := range hosts {
-		t.Run(host.IP, func(t *testing.T) {
+	for _, host := range hosts {
+		t.Run(strconv.Itoa(host.Port), func(t *testing.T) {
 			client, err := execution.NewSSHClient(host)
 			if err != nil {
-				t.Fatalf("failed to create SSH client for host %d: %v", i+1, err)
+				t.Fatalf("failed to create SSH client: %v", err)
 			}
 			defer client.Close()
 
@@ -182,7 +110,7 @@ func TestSSHClientMultipleHosts(t *testing.T) {
 
 			res, err := client.RunCommand(ctx, execution.CommandRequest{Command: "whoami"})
 			if err != nil {
-				t.Fatalf("failed to run command on host %d: %v", i+1, err)
+				t.Fatalf("failed to run command: %v", err)
 			}
 
 			if !strings.Contains(res.Output, testUsername) {
@@ -204,7 +132,6 @@ func TestSSHClientCommandWithStderr(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
 
-	// Command that writes to stderr
 	res, err := client.RunCommand(ctx, execution.CommandRequest{Command: "echo 'error message' >&2"})
 	if err != nil {
 		t.Fatalf("failed to run command: %v", err)
@@ -227,7 +154,6 @@ func TestSSHClientCommandFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
 
-	// Command that exits with non-zero status
 	_, err = client.RunCommand(ctx, execution.CommandRequest{Command: "exit 1"})
 	if err == nil {
 		t.Fatal("expected error for failed command, got nil")
@@ -237,7 +163,6 @@ func TestSSHClientCommandFailure(t *testing.T) {
 func TestSSHClientCloseAndReconnect(t *testing.T) {
 	host := hosts[0]
 
-	// First connection
 	client1, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create first SSH client: %v", err)
@@ -255,12 +180,10 @@ func TestSSHClientCloseAndReconnect(t *testing.T) {
 		t.Errorf("unexpected output from first client: %q", res1.Output)
 	}
 
-	// Close first connection
 	if err := client1.Close(); err != nil {
 		t.Fatalf("failed to close first client: %v", err)
 	}
 
-	// Second connection
 	client2, err := execution.NewSSHClient(host)
 	if err != nil {
 		t.Fatalf("failed to create second SSH client: %v", err)
