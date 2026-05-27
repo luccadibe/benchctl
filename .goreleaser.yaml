@@ -3,7 +3,6 @@ version: 2
 
 before:
   hooks:
-    - sh -c "cd ui && bun run build"
     - go mod tidy
 
 builds:
