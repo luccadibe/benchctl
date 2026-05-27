@@ -193,14 +193,17 @@ Stages run through a shell command. Set `benchmark.shell` to control it (the def
 #### Hosts and multi-host stages
 - Use `host` for a single host or `hosts` for multiple hosts. If neither is set, the stage runs on `local`.
 - Hosts in `hosts` execute sequentially in the listed order.
-- Outputs collected from multi-host stages are suffixed as `outputName__host.ext`.
+- For multi-host output collection, include `${BENCHCTL_HOST}` in `outputs[].name` (and matching `remote_path` on each host) so files do not overwrite each other.
 
 Example:
 ```yaml
 stages:
   - name: run-everywhere
     hosts: [vm1, vm2]
-    command: uname -a
+    command: uname -a > /tmp/${BENCHCTL_HOST}-uname.txt
+    outputs:
+      - name: ${BENCHCTL_HOST}-uname
+        remote_path: /tmp/${BENCHCTL_HOST}-uname.txt
 ```
 
 #### Skipping stages
@@ -234,7 +237,7 @@ stages:
     command: ./postgres-extra.sh
 ```
 
-Collected files are prefixed with the case name, for example `postgres__metrics.csv`.
+Use `${DB_ENGINE}` (or other case `env` keys) in `outputs[].name` and `outputs[].remote_path` so each case writes and collects distinct files, for example `postgres-metrics.csv` and `mysql-metrics.csv`.
 
 ### Sync
 
@@ -311,8 +314,30 @@ During stage execution, the following environment variables are exported for com
 - `BENCHCTL_CONFIG_PATH`: set if provided in the environment when invoking benchctl
 - `BENCHCTL_BIN`: absolute path to the running benchctl binary
 - `BENCHCTL_CASE_NAME`: current case name when `cases:` are configured
+- `BENCHCTL_HOST`: host alias for the current stage execution (`stages[].host` or entry in `stages[].hosts`)
 
 Use these to locate inputs/outputs or to parameterize your scripts.
+
+### Output path templates
+
+`stages[].outputs[].name` and `stages[].outputs[].remote_path` support `$VAR` and `${VAR}` expansion using the same variables as stage commands (including case `env` and CLI `-e` overrides). Collected files are stored in the run directory as `<expanded-name><extension-from-remote_path>`.
+
+```yaml
+cases:
+  - name: openfaas
+    env:
+      BENCH_PLATFORM: openfaas
+
+stages:
+  - name: run
+    host: eval-vm
+    script: ./run.sh
+    outputs:
+      - name: ${BENCH_PLATFORM}-sustained
+        remote_path: /tmp/results/${BENCH_PLATFORM}-sustained.csv
+```
+
+Undefined variables fail the run at collection time. Use `$$` for a literal `$`.
 
 ## Examples
 

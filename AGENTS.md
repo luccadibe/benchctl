@@ -119,6 +119,7 @@ It is intended for agentic coding assistants.
 - Preserve YAML key naming conventions (snake_case).
 - Ensure schema changes are reflected in config validation.
 - `cases:` run all stages once per case; `stages[].execute_only_for` restricts a stage to one case.
+- `stages[].outputs[].name` and `remote_path` expand `$VAR` / `${VAR}` from stage env (including case `env`, `BENCHCTL_HOST`, CLI `-e`). No automatic case/host filename suffixes.
 
 ## When adding CLI flags
 - Update `cmd/benchctl` command wiring.

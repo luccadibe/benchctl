@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -136,7 +135,6 @@ func executeStages(
 	logStageOutput := consoleSink == nil || !writersReferToSameFD(consoleSink, logWriter)
 
 	for _, benchmarkCase := range workflowCases(cfg) {
-		envPrefix := buildEnvPrefix(runID, runDir, cfg, envVars, benchmarkCase)
 		for i, stage := range cfg.Stages {
 			if stage.Skip {
 				logger.Info("stage skipped", "stage", stage.Name, "case", benchmarkCase.Name, "index", i+1, "total", len(cfg.Stages))
@@ -170,13 +168,16 @@ func executeStages(
 
 				commandBody = wrapWithShell(commandBody, resolveStageShell(cfg, stage))
 
+				stageEnv := buildStageEnv(runID, runDir, cfg, envVars, benchmarkCase, hostAlias)
+				envPrefix := envPrefixFromMap(stageEnv)
+
 				if stage.Background {
 					pid, err := startBackgroundStage(ctx, client, envPrefix, commandBody, stage)
 					_ = client.Close()
 					if err != nil {
 						return err
 					}
-					backgroundMgr.Add(backgroundStage{stage: stage, hostAlias: hostAlias, host: host, caseName: benchmarkCase.Name, pid: pid})
+					backgroundMgr.Add(backgroundStage{stage: stage, host: host, outputEnv: stageEnv, pid: pid})
 					logger.Info("stage running in background", "stage", stage.Name)
 					continue
 				}
@@ -211,7 +212,7 @@ func executeStages(
 				}
 
 				if len(stage.Outputs) > 0 {
-					if err := collectStageOutputs(ctx, client, runDir, stage, logger, hostAlias, benchmarkCase.Name); err != nil {
+					if err := collectStageOutputs(ctx, client, runDir, stage, logger, stageEnv); err != nil {
 						_ = client.Close()
 						return err
 					}
@@ -403,15 +404,6 @@ func writersReferToSameFD(a, b io.Writer) bool {
 	return false
 }
 
-const (
-	EnvRunID      = "BENCHCTL_RUN_ID"
-	EnvOutputDir  = "BENCHCTL_OUTPUT_DIR"
-	EnvRunDir     = "BENCHCTL_RUN_DIR"
-	EnvConfigPath = "BENCHCTL_CONFIG_PATH"
-	EnvBenchctl   = "BENCHCTL_BIN"
-	DefaultShell  = "bash -lic"
-)
-
 func resolveStageShell(cfg *config.Config, stage config.Stage) string {
 	shell := strings.TrimSpace(stage.Shell)
 	if shell == "" {
@@ -431,42 +423,3 @@ func wrapWithShell(command, shell string) string {
 	return fmt.Sprintf("%s %s", shell, shellQuote(command))
 }
 
-func buildEnvPrefix(runID, runDir string, cfg *config.Config, envVars map[string]string, benchmarkCase config.Case) string {
-	configPath := os.Getenv(EnvConfigPath)
-	exePath, _ := os.Executable()
-	exports := []string{
-		EnvRunID + "=" + shellQuote(runID),
-		EnvOutputDir + "=" + shellQuote(cfg.Benchmark.OutputDir),
-		EnvRunDir + "=" + shellQuote(runDir),
-	}
-	if strings.TrimSpace(configPath) != "" {
-		exports = append(exports, EnvConfigPath+"="+shellQuote(configPath))
-	}
-	if strings.TrimSpace(exePath) != "" {
-		exports = append(exports, EnvBenchctl+"="+shellQuote(exePath))
-	}
-	if len(envVars) > 0 {
-		keys := make([]string, 0, len(envVars))
-		for key := range envVars {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			exports = append(exports, key+"="+shellQuote(envVars[key]))
-		}
-	}
-	if strings.TrimSpace(benchmarkCase.Name) != "" {
-		exports = append(exports, "BENCHCTL_CASE_NAME="+shellQuote(benchmarkCase.Name))
-	}
-	if len(benchmarkCase.Env) > 0 {
-		keys := make([]string, 0, len(benchmarkCase.Env))
-		for key := range benchmarkCase.Env {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			exports = append(exports, key+"="+shellQuote(benchmarkCase.Env[key]))
-		}
-	}
-	return "export " + strings.Join(exports, " ") + "; "
-}
