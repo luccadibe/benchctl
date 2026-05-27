@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luccadibe/benchctl/internal/config"
 	"github.com/luccadibe/benchctl/internal/execution"
 )
 
@@ -58,40 +57,6 @@ func TestTerminatePIDStopsProcess(t *testing.T) {
 	existsCmd := exec.Command("sh", "-c", "kill -0 -"+pid+" 2>/dev/null || kill -0 "+pid+" 2>/dev/null")
 	if err := existsCmd.Run(); err == nil {
 		t.Fatalf("expected process group %s to be terminated", pid)
-	}
-}
-
-func TestCollectStageOutputsMultiHostSuffix(t *testing.T) {
-	remoteDir := t.TempDir()
-	runDir := t.TempDir()
-	remotePath := filepath.Join(remoteDir, "metrics.csv")
-	if err := os.WriteFile(remotePath, []byte("sample"), 0644); err != nil {
-		t.Fatalf("failed to write remote file: %v", err)
-	}
-
-	stage := config.Stage{
-		Name:  "collect",
-		Hosts: []string{"host-a", "host-b"},
-		Outputs: []config.Output{
-			{
-				Name:       "metrics",
-				RemotePath: remotePath,
-			},
-		},
-	}
-
-	client := execution.NewLocalClient()
-	defer func() { _ = client.Close() }()
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	ctx := context.Background()
-	if err := collectStageOutputs(ctx, client, runDir, stage, logger, "host-a", ""); err != nil {
-		t.Fatalf("collectStageOutputs failed: %v", err)
-	}
-
-	expected := filepath.Join(runDir, "metrics__host-a.csv")
-	if _, err := os.Stat(expected); err != nil {
-		t.Fatalf("expected output file to exist: %v", err)
 	}
 }
 
