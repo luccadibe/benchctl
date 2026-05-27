@@ -10,8 +10,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/luccadibe/benchctl/internal"
 	"github.com/luccadibe/benchctl/internal/config"
+	"github.com/luccadibe/benchctl/pkg/bench"
+	"github.com/luccadibe/benchctl/pkg/run"
 	"github.com/urfave/cli/v3"
 )
 
@@ -69,13 +70,8 @@ func main() {
 					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
 						cfgFile = env
 					}
-					cfg, err := parseConfig(cfgFile)
+					bench, err := parseBench(cfgFile)
 					if err != nil {
-						return err
-					}
-
-					skipStages := cmd.StringSlice(skipFlag.Name)
-					if err := applySkipFlags(cfg, skipStages); err != nil {
 						return err
 					}
 
@@ -89,19 +85,21 @@ func main() {
 					if err != nil {
 						return err
 					}
-					timeout := cmd.Duration(timeoutFlag.Name)
-					timeoutProvided := cmd.IsSet(timeoutFlag.Name)
-
-					var subCtx context.Context
-					var cancel context.CancelFunc
-					if timeoutProvided && timeout > 0 {
-						subCtx, cancel = context.WithTimeout(ctx, timeout)
-						defer cancel()
-					} else {
-						subCtx = ctx
+					var runOptions []run.Option
+					if len(customMetadata) > 0 {
+						runOptions = append(runOptions, run.WithMetadataMap(customMetadata))
+					}
+					if len(envVars) > 0 {
+						runOptions = append(runOptions, run.WithEnvMap(envVars))
+					}
+					for _, stageName := range cmd.StringSlice(skipFlag.Name) {
+						runOptions = append(runOptions, run.Skip(stageName))
+					}
+					if cmd.IsSet(timeoutFlag.Name) {
+						runOptions = append(runOptions, run.WithTimeout(cmd.Duration(timeoutFlag.Name)))
 					}
 
-					_, err = internal.RunWorkflow(subCtx, cfg, customMetadata, envVars)
+					_, err = run.Run(ctx, bench, runOptions...)
 					return err
 				},
 				Flags: []cli.Flag{
@@ -148,7 +146,7 @@ func main() {
 					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
 						cfgFile = env
 					}
-					cfg, err := parseConfig(cfgFile)
+					bench, err := parseBench(cfgFile)
 					if err != nil {
 						return err
 					}
@@ -156,8 +154,8 @@ func main() {
 					if runId == "" {
 						return fmt.Errorf("run-id is required")
 					}
-					runPath := filepath.Join(cfg.Benchmark.OutputDir, runId)
-					fmt.Println(internal.InspectRun(runPath, cmd.Bool(verboseFlag.Name)))
+					runPath := filepath.Join(bench.Config().Benchmark.OutputDir, runId)
+					fmt.Println(run.Inspect(runPath, cmd.Bool(verboseFlag.Name)))
 					return nil
 				},
 				Flags: []cli.Flag{
@@ -173,7 +171,7 @@ func main() {
 					if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
 						cfgFile = env
 					}
-					cfg, err := parseConfig(cfgFile)
+					bench, err := parseBench(cfgFile)
 					if err != nil {
 						return err
 					}
@@ -181,13 +179,13 @@ func main() {
 					if runId == "" {
 						return fmt.Errorf("run-id is required")
 					}
-					runPath := filepath.Join(cfg.Benchmark.OutputDir, runId)
+					runPath := filepath.Join(bench.Config().Benchmark.OutputDir, runId)
 					md := cmd.StringSlice(metadataFlag.Name)
 					extraMd, err := parseMetadata(md)
 					if err != nil {
 						return err
 					}
-					err = internal.AddMetadata(runPath, extraMd)
+					err = run.Annotate(runPath, extraMd)
 					if err != nil {
 						return err
 					}
@@ -212,25 +210,25 @@ func main() {
 						return fmt.Errorf("second run-id is required")
 					}
 					cfgFile := cmd.String(configFlag.Name)
-					cfg, err := parseConfig(cfgFile)
+					bench, err := parseBench(cfgFile)
 					if err != nil {
 						return err
 					}
-					runPath1 := filepath.Join(cfg.Benchmark.OutputDir, runId1)
-					runPath2 := filepath.Join(cfg.Benchmark.OutputDir, runId2)
-					runmd1, err := internal.LoadRunMetadata(filepath.Join(runPath1, "metadata.json"))
+					runPath1 := filepath.Join(bench.Config().Benchmark.OutputDir, runId1)
+					runPath2 := filepath.Join(bench.Config().Benchmark.OutputDir, runId2)
+					runmd1, err := run.LoadMetadata(runPath1)
 					if err != nil {
 						return err
 					}
-					runmd2, err := internal.LoadRunMetadata(filepath.Join(runPath2, "metadata.json"))
+					runmd2, err := run.LoadMetadata(runPath2)
 					if err != nil {
 						return err
 					}
-					results, err := internal.CompareRunMetadata(runmd1, runmd2)
+					results, err := run.Compare(runmd1, runmd2)
 					if err != nil {
 						return err
 					}
-					fmt.Println(internal.PrintComparisonResults(results))
+					fmt.Println(run.FormatComparison(results))
 					return nil
 				},
 			},
@@ -247,11 +245,11 @@ func main() {
 							if env := os.Getenv("BENCHCTL_CONFIG_PATH"); strings.TrimSpace(env) != "" {
 								cfgFile = env
 							}
-							cfg, err := parseConfig(cfgFile)
+							bench, err := parseBench(cfgFile)
 							if err != nil {
 								return err
 							}
-							return internal.SyncResults(ctx, cfg)
+							return run.SyncPush(ctx, bench)
 						},
 						Flags: []cli.Flag{
 							configFlag,
@@ -267,18 +265,12 @@ func main() {
 	}
 }
 
-func parseConfig(cfgFile string) (*config.Config, error) {
-	data, err := os.ReadFile(cfgFile)
-	if err != nil {
-		return nil, err
-
-	}
-
-	cfg, err := config.ParseYAML(data)
+func parseBench(cfgFile string) (*bench.Bench, error) {
+	b, err := bench.FromFile(cfgFile)
 	if err != nil {
 		return nil, errors.New("Error parsing configuration file: " + err.Error())
 	}
-	return cfg, nil
+	return b, nil
 }
 
 var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -313,38 +305,4 @@ func parseEnvironment(entries []string) (map[string]string, error) {
 		envVars[key] = parts[1]
 	}
 	return envVars, nil
-}
-
-func applySkipFlags(cfg *config.Config, skipStages []string) error {
-	if len(skipStages) == 0 {
-		return nil
-	}
-
-	stageNames := make(map[string]int, len(cfg.Stages))
-	for i, stage := range cfg.Stages {
-		name := strings.TrimSpace(stage.Name)
-		if name == "" {
-			continue
-		}
-		stageNames[name] = i
-	}
-
-	skipSet := make(map[string]struct{}, len(skipStages))
-	for _, stageName := range skipStages {
-		name := strings.TrimSpace(stageName)
-		if name == "" {
-			return fmt.Errorf("skip stage name must be non-empty")
-		}
-		skipSet[name] = struct{}{}
-	}
-
-	for name := range skipSet {
-		index, ok := stageNames[name]
-		if !ok {
-			return fmt.Errorf("unknown stage for --skip: %s", name)
-		}
-		cfg.Stages[index].Skip = true
-	}
-
-	return nil
 }

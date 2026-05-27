@@ -109,13 +109,6 @@ func collectStageOutputs(
 			"remote_path", resolved.remotePath,
 			"local_path", localPath,
 		)
-		if output.DataSchema != nil {
-			for _, col := range output.DataSchema.Columns {
-				if col.Type == config.DataTypeTimestamp && strings.TrimSpace(col.Format) == "" {
-					logger.Warn("timestamp column has no format", "column", col.Name)
-				}
-			}
-		}
 	}
 	return nil
 }

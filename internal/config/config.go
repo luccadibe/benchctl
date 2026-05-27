@@ -11,17 +11,6 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// DataType represents allowed CSV column data types in configuration.
-type DataType string
-
-const (
-	// allowed data types for the csv output (match design.md)
-	DataTypeInteger   DataType = "integer"
-	DataTypeFloat     DataType = "float"
-	DataTypeString    DataType = "string"
-	DataTypeTimestamp DataType = "timestamp"
-)
-
 // Config mirrors the YAML configuration shape.
 type Config struct {
 	Benchmark Benchmark       `yaml:"benchmark" json:"benchmark"`
@@ -63,21 +52,6 @@ type GitConfig struct {
 type SyncConfig struct {
 	Remote string   `yaml:"remote" json:"remote"`
 	Args   []string `yaml:"args,omitempty" json:"args,omitempty"`
-}
-
-// DataSchema defines the schema for structured data outputs (e.g., CSV files).
-type DataSchema struct {
-	Format  string       `yaml:"format" json:"format" jsonschema:"enum=csv"`
-	Columns []DataColumn `yaml:"columns" json:"columns"`
-}
-
-// DataColumn represents a single column definition with a name.
-type DataColumn struct {
-	Name string   `yaml:"name" json:"name"`
-	Type DataType `yaml:"type" json:"type" jsonschema:"enum=timestamp,enum=integer,enum=float,enum=string"`
-	Unit string   `yaml:"unit,omitempty" json:"unit,omitempty"`
-	// Format is only applicable for timestamp type. Supported: unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601
-	Format string `yaml:"format,omitempty" json:"format,omitempty"`
 }
 
 // Host is a host in the benchmark. It can be a remote host or the local host.
@@ -131,8 +105,7 @@ type Output struct {
 	Name       string `yaml:"name" json:"name"`
 	RemotePath string `yaml:"remote_path" json:"remote_path"`
 	// If not provided, saved under the run's output directory
-	LocalPath  string      `yaml:"local_path,omitempty" json:"local_path,omitempty"`
-	DataSchema *DataSchema `yaml:"data_schema,omitempty" json:"data_schema,omitempty"`
+	LocalPath string `yaml:"local_path,omitempty" json:"local_path,omitempty"`
 }
 
 // ParseYAML loads and validates configuration using strict decoding.
@@ -265,36 +238,8 @@ func validateConfig(cfg *Config) error {
 			if strings.TrimSpace(output.RemotePath) == "" {
 				errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].remote_path must be set", i, j))
 			}
-			// TODO remove this, schema handles this
 			if strings.TrimSpace(output.LocalPath) != "" {
 				errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].local_path is not allowed; files are stored directly in the run directory using output.name", i, j))
-			}
-			if output.DataSchema != nil {
-				if strings.TrimSpace(output.DataSchema.Format) == "" {
-					errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.format must be set", i, j))
-				}
-				// Validate columns
-				for k, col := range output.DataSchema.Columns {
-					if strings.TrimSpace(col.Name) == "" {
-						errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.columns[%d].name must be set", i, j, k))
-					}
-					switch col.Type {
-					case DataTypeInteger, DataTypeFloat, DataTypeString, DataTypeTimestamp:
-						// ok
-					default:
-						errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.columns[%d].type must be one of [timestamp, integer, float, string]", i, j, k))
-					}
-					_ = col.Unit // unit is optional
-					// If timestamp with format, validate allowed formats
-					if col.Type == DataTypeTimestamp && strings.TrimSpace(col.Format) != "" {
-						switch strings.ToLower(col.Format) {
-						case "unix", "unix_ms", "unix_us", "unix_ns", "rfc3339", "rfc3339_nano", "iso8601":
-							// ok
-						default:
-							errs = append(errs, fmt.Sprintf("stages[%d].outputs[%d].data_schema.columns[%d].format must be one of [unix, unix_ms, unix_us, unix_ns, rfc3339, rfc3339_nano, iso8601]", i, j, k))
-						}
-					}
-				}
 			}
 		}
 	}

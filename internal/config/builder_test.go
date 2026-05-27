@@ -12,17 +12,14 @@ func TestBuilderCreatesValidConfig(t *testing.T) {
 			OnHost("remote"),
 			ExecuteOnlyFor("rocksdb"),
 			RunCommand("./collect.sh"),
-			WithOutput(NewOutput("metrics", "/tmp/metrics.csv", NewCSVSchema(
-				Column("timestamp", DataTypeTimestamp, Unit("s"), TimeFormat("unix")),
-				Column("latency_ms", DataTypeFloat, Unit("ms")),
-			))),
+			WithOutput(NewOutput("metrics", "/tmp/metrics.csv")),
 		)),
 	)
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected valid config: %v", err)
 	}
-	if cfg.Stages[0].Outputs[0].DataSchema.Columns[1].Unit != "ms" {
-		t.Fatalf("expected unit helper to set ms")
+	if cfg.Stages[0].Outputs[0].RemotePath != "/tmp/metrics.csv" {
+		t.Fatalf("expected remote path to be set")
 	}
 }
