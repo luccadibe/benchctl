@@ -9,6 +9,7 @@ func (cfg *Config) Clone() *Config {
 	clone.Hosts = cloneHosts(cfg.Hosts)
 	clone.Cases = cloneCases(cfg.Cases)
 	clone.Stages = cloneStages(cfg.Stages)
+	clone.Cleanup = cloneCleanup(cfg.Cleanup)
 	if cfg.Benchmark.Logging != nil {
 		logging := *cfg.Benchmark.Logging
 		clone.Benchmark.Logging = &logging
@@ -59,6 +60,15 @@ func cloneStages(stages []Stage) []Stage {
 			healthCheck := *stage.HealthCheck
 			clone[i].HealthCheck = &healthCheck
 		}
+	}
+	return clone
+}
+
+func cloneCleanup(cleanup []Cleanup) []Cleanup {
+	clone := make([]Cleanup, len(cleanup))
+	for i, step := range cleanup {
+		clone[i] = step
+		clone[i].Hosts = append([]string(nil), step.Hosts...)
 	}
 	return clone
 }

@@ -93,14 +93,11 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 
 	stageErr := executeStages(ctx, cfg, runID, runDir, logger, logWriter, metadata, backgroundMgr, envVars)
 	stopErr := backgroundMgr.StopAll(ctx, runDir)
-	if stageErr != nil {
-		joined := errors.Join(stageErr, stopErr)
+	cleanupErr := executeCleanup(ctx, cfg, runID, runDir, logger, logWriter, envVars)
+	joined := errors.Join(stageErr, stopErr, cleanupErr)
+	if joined != nil {
 		logError(logger, "workflow failed", joined, "run_id", runID)
 		return nil, fmt.Errorf("workflow failed: %w", joined)
-	}
-	if stopErr != nil {
-		logError(logger, "stop background stages failed", stopErr, "run_id", runID)
-		return nil, fmt.Errorf("stop background stages: %w", stopErr)
 	}
 
 	metadata.EndTime = time.Now()
@@ -238,6 +235,87 @@ func executeStages(
 	return nil
 }
 
+// executeCleanup runs workflow cleanup steps after all stages finish, even on stage failure.
+func executeCleanup(
+	ctx context.Context,
+	cfg *config.Config,
+	runID, runDir string,
+	logger *slog.Logger,
+	logWriter io.Writer,
+	envVars map[string]string,
+) error {
+	if len(cfg.Cleanup) == 0 {
+		return nil
+	}
+
+	consoleSink := resolveConsoleWriter()
+	stdoutSink := consoleSink
+	stderrSink := consoleSink
+	usePTY := consoleSink != nil
+	logStepOutput := consoleSink == nil || !writersReferToSameFD(consoleSink, logWriter)
+
+	for i, step := range cfg.Cleanup {
+		logger.Info("cleanup started", "cleanup", step.Name, "index", i+1, "total", len(cfg.Cleanup))
+		hostAliases := resolveCommandHosts(step.Host, step.Hosts)
+		for _, hostAlias := range hostAliases {
+			host, ok := cfg.Hosts[hostAlias]
+			if !ok {
+				if hostAlias != "local" {
+					err := fmt.Errorf("cleanup %s references unknown host %s", step.Name, hostAlias)
+					logError(logger, "cleanup failed", err, "cleanup", step.Name, "host", hostAlias)
+					return err
+				}
+				host = config.Host{}
+			}
+
+			client, err := openExecutionClient(host)
+			if err != nil {
+				err = fmt.Errorf("error creating execution client for cleanup %s: %w", step.Name, err)
+				logError(logger, "cleanup failed", err, "cleanup", step.Name, "host", hostAlias)
+				return err
+			}
+
+			commandBody, err := prepareNamedCommand(ctx, step.Name, step.Command, step.Script, host, runID, client, "cleanup")
+			if err != nil {
+				_ = client.Close()
+				logError(logger, "cleanup failed", err, "cleanup", step.Name, "host", hostAlias)
+				return err
+			}
+
+			commandBody = wrapWithShell(commandBody, resolveCleanupShell(cfg, step))
+			stepEnv := buildStageEnv(runID, runDir, cfg, envVars, config.Case{}, hostAlias)
+			envPrefix := envPrefixFromMap(stepEnv)
+
+			result, err := client.RunCommand(ctx, execution.CommandRequest{
+				Command: envPrefix + commandBody,
+				Stdout:  stdoutSink,
+				Stderr:  stderrSink,
+				UsePTY:  usePTY,
+			})
+			if err == nil && result.ExitCode != 0 {
+				err = fmt.Errorf("command exited with code %d", result.ExitCode)
+			}
+			if err != nil {
+				if logStepOutput && strings.TrimSpace(result.Output) != "" {
+					logger.Info("cleanup captured output", "cleanup", step.Name, "output", result.Output)
+				}
+				_ = client.Close()
+				cleanupErr := fmt.Errorf("cleanup %s failed: %w (exit code: %d)", step.Name, err, result.ExitCode)
+				logError(logger, "cleanup failed", cleanupErr, "cleanup", step.Name, "host", hostAlias, "exit_code", result.ExitCode)
+				return cleanupErr
+			}
+
+			if logStepOutput {
+				logger.Info("cleanup output", "cleanup", step.Name, "output", result.Output)
+			}
+			logger.Info("cleanup completed", "cleanup", step.Name, "exit_code", result.ExitCode)
+			_ = client.Close()
+		}
+	}
+
+	return nil
+}
+
 func workflowCases(cfg *config.Config) []config.Case {
 	if len(cfg.Cases) == 0 {
 		return []config.Case{{}}
@@ -250,28 +328,36 @@ func stageAppliesToCase(stage config.Stage, benchmarkCase config.Case) bool {
 }
 
 func resolveStageHosts(stage config.Stage) []string {
-	if len(stage.Hosts) > 0 {
-		return stage.Hosts
+	return resolveCommandHosts(stage.Host, stage.Hosts)
+}
+
+func resolveCommandHosts(host string, hosts []string) []string {
+	if len(hosts) > 0 {
+		return hosts
 	}
-	if strings.TrimSpace(stage.Host) != "" {
-		return []string{stage.Host}
+	if strings.TrimSpace(host) != "" {
+		return []string{host}
 	}
 	return []string{"local"}
 }
 
 func prepareStageCommand(ctx context.Context, stage config.Stage, host config.Host, runID string, client execution.ExecutionClient) (string, error) {
-	if strings.TrimSpace(stage.Command) != "" {
-		return stage.Command, nil
+	return prepareNamedCommand(ctx, stage.Name, stage.Command, stage.Script, host, runID, client, "stage")
+}
+
+func prepareNamedCommand(ctx context.Context, name, command, script string, host config.Host, runID string, client execution.ExecutionClient, kind string) (string, error) {
+	if strings.TrimSpace(command) != "" {
+		return command, nil
 	}
-	if strings.TrimSpace(stage.Script) == "" {
-		return "", fmt.Errorf("stage %s has no command or script", stage.Name)
+	if strings.TrimSpace(script) == "" {
+		return "", fmt.Errorf("%s %s has no command or script", kind, name)
 	}
 
 	if strings.TrimSpace(host.IP) == "" {
-		return fmt.Sprintf("bash ./%s", stage.Script), nil
+		return fmt.Sprintf("bash ./%s", script), nil
 	}
 
-	localScriptPath := stage.Script
+	localScriptPath := script
 	if !filepath.IsAbs(localScriptPath) {
 		if abs, err := filepath.Abs(localScriptPath); err == nil {
 			localScriptPath = abs
@@ -279,7 +365,7 @@ func prepareStageCommand(ctx context.Context, stage config.Stage, host config.Ho
 	}
 	remoteScriptPath := filepath.Join("/tmp", fmt.Sprintf("benchctl-%s-%s", runID, filepath.Base(localScriptPath)))
 	if err := client.Upload(ctx, localScriptPath, remoteScriptPath); err != nil {
-		return "", fmt.Errorf("failed to upload script for stage %s: %w", stage.Name, err)
+		return "", fmt.Errorf("failed to upload script for %s %s: %w", kind, name, err)
 	}
 	return fmt.Sprintf("chmod +x '%s' && bash '%s'", remoteScriptPath, remoteScriptPath), nil
 }
@@ -431,9 +517,17 @@ func writersReferToSameFD(a, b io.Writer) bool {
 }
 
 func resolveStageShell(cfg *config.Config, stage config.Stage) string {
-	shell := strings.TrimSpace(stage.Shell)
+	return resolveItemShell(cfg.Benchmark.Shell, stage.Shell)
+}
+
+func resolveCleanupShell(cfg *config.Config, step config.Cleanup) string {
+	return resolveItemShell(cfg.Benchmark.Shell, step.Shell)
+}
+
+func resolveItemShell(benchmarkShell, itemShell string) string {
+	shell := strings.TrimSpace(itemShell)
 	if shell == "" {
-		shell = strings.TrimSpace(cfg.Benchmark.Shell)
+		shell = strings.TrimSpace(benchmarkShell)
 	}
 	if shell == "" {
 		shell = DefaultShell

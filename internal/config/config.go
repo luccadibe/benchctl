@@ -17,6 +17,7 @@ type Config struct {
 	Hosts     map[string]Host `yaml:"hosts" json:"hosts"`
 	Cases     []Case          `yaml:"cases,omitempty" json:"cases,omitempty"`
 	Stages    []Stage         `yaml:"stages" json:"stages"`
+	Cleanup   []Cleanup       `yaml:"cleanup,omitempty" json:"cleanup,omitempty"`
 }
 
 // Benchmark holds top-level benchmark metadata.
@@ -92,6 +93,16 @@ type Stage struct {
 	Background  bool         `yaml:"background,omitempty" json:"background,omitempty"`
 	HealthCheck *HealthCheck `yaml:"health_check,omitempty" json:"health_check,omitempty"`
 	Outputs     []Output     `yaml:"outputs,omitempty" json:"outputs,omitempty"`
+}
+
+// Cleanup is a workflow teardown step that runs after all stages, even on failure.
+type Cleanup struct {
+	Name    string   `yaml:"name" json:"name"`
+	Host    string   `yaml:"host,omitempty" json:"host,omitempty"`
+	Hosts   []string `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+	Command string   `yaml:"command,omitempty" json:"command,omitempty"`
+	Script  string   `yaml:"script,omitempty" json:"script,omitempty"`
+	Shell   string   `yaml:"shell,omitempty" json:"shell,omitempty"`
 }
 
 // HealthCheck determines readiness/success for a stage.
@@ -260,6 +271,51 @@ func validateConfig(cfg *Config) error {
 	for name, stageIndices := range outputNames {
 		if len(stageIndices) > 1 {
 			errs = append(errs, fmt.Sprintf("output name '%s' is not unique; found in stages: %v", name, stageIndices))
+		}
+	}
+
+	cleanupNames := map[string]int{}
+	for i := range cfg.Cleanup {
+		cl := &cfg.Cleanup[i]
+		if strings.TrimSpace(cl.Name) == "" {
+			errs = append(errs, fmt.Sprintf("cleanup[%d].name must be set", i))
+		} else {
+			name := strings.TrimSpace(cl.Name)
+			if prevIndex, exists := cleanupNames[name]; exists {
+				errs = append(errs, fmt.Sprintf("cleanup[%d].name duplicates cleanup[%d] (%s)", i, prevIndex, name))
+			} else {
+				cleanupNames[name] = i
+			}
+		}
+		if cl.Host != "" && len(cl.Hosts) > 0 {
+			errs = append(errs, fmt.Sprintf("cleanup[%d] cannot set both host and hosts", i))
+		}
+		if cl.Host != "" {
+			if _, ok := hostAliases[cl.Host]; !ok {
+				errs = append(errs, fmt.Sprintf("cleanup[%d].host references unknown host '%s'", i, cl.Host))
+			}
+		}
+		if len(cl.Hosts) > 0 {
+			seen := make(map[string]struct{}, len(cl.Hosts))
+			for _, hostAlias := range cl.Hosts {
+				if strings.TrimSpace(hostAlias) == "" {
+					errs = append(errs, fmt.Sprintf("cleanup[%d].hosts entries must be non-empty", i))
+					continue
+				}
+				if _, ok := seen[hostAlias]; ok {
+					errs = append(errs, fmt.Sprintf("cleanup[%d].hosts contains duplicate host '%s'", i, hostAlias))
+					continue
+				}
+				seen[hostAlias] = struct{}{}
+				if _, ok := hostAliases[hostAlias]; !ok {
+					errs = append(errs, fmt.Sprintf("cleanup[%d].hosts references unknown host '%s'", i, hostAlias))
+				}
+			}
+		}
+		hasCmd := strings.TrimSpace(cl.Command) != ""
+		hasScript := strings.TrimSpace(cl.Script) != ""
+		if hasCmd == hasScript {
+			errs = append(errs, fmt.Sprintf("cleanup[%d]: exactly one of command or script must be set", i))
 		}
 	}
 

@@ -354,6 +354,59 @@ stages:
 `,
 			contain: "benchmark.sync.remote must be set",
 		},
+		{
+			name: "duplicate cleanup names",
+			yaml: `
+benchmark:
+  name: dup-cleanup
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    command: echo hello
+cleanup:
+  - name: stop
+    command: echo stop
+  - name: stop
+    command: echo stop-again
+`,
+			contain: "cleanup[1].name duplicates cleanup[0]",
+		},
+		{
+			name: "cleanup unknown host",
+			yaml: `
+benchmark:
+  name: bad-cleanup-host
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    command: echo hello
+cleanup:
+  - name: stop
+    host: missing
+    command: echo stop
+`,
+			contain: "cleanup[0].host references unknown host",
+		},
+		{
+			name: "cleanup missing command and script",
+			yaml: `
+benchmark:
+  name: bad-cleanup-cmd
+  output_dir: ./results
+hosts:
+  local: {}
+stages:
+  - name: run
+    command: echo hello
+cleanup:
+  - name: stop
+`,
+			contain: "cleanup[0]: exactly one of command or script must be set",
+		},
 	}
 
 	for _, tt := range tests {

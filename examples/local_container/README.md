@@ -35,12 +35,13 @@ The load generator script (`load_generator.sh`) provides:
 
 ## Benchmark Stages
 
-The benchmark configuration includes four stages:
+The benchmark configuration includes three stages and one cleanup step:
 
 1. **build-docker-image** - Builds the Docker image for the server
 2. **start-container** - Starts the containerized server with health checks
 3. **run-load-test** - Executes the load generator and collects CSV data
-4. **cleanup-container** - Stops and removes the container
+
+**cleanup-container** runs after all stages finish, even if a stage fails. It stops and removes the container.
 
 ## Collected Outputs
 

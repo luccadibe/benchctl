@@ -17,6 +17,7 @@ type (
 	HostConfig    = config.Host
 	Case          = config.Case
 	StageConfig   = config.Stage
+	CleanupConfig = config.Cleanup
 	HealthConfig  = config.HealthCheck
 	OutputConfig  = config.Output
 )
@@ -133,6 +134,13 @@ func WithCases(cases ...Case) Option {
 func WithStages(stages ...StageConfig) Option {
 	return func(cfg *config.Config) {
 		cfg.Stages = append([]config.Stage(nil), stages...)
+	}
+}
+
+// WithCleanup replaces the benchmark cleanup step list.
+func WithCleanup(steps ...CleanupConfig) Option {
+	return func(cfg *config.Config) {
+		cfg.Cleanup = append([]config.Cleanup(nil), steps...)
 	}
 }
 

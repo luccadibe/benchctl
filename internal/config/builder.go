@@ -82,6 +82,13 @@ func WithStage(stage Stage) Option {
 	}
 }
 
+// WithCleanup appends a workflow cleanup step.
+func WithCleanup(step Cleanup) Option {
+	return func(cfg *Config) {
+		cfg.Cleanup = append(cfg.Cleanup, step)
+	}
+}
+
 // SSHHost creates a remote SSH host configuration.
 func SSHHost(ip, username, keyFile string) Host {
 	return Host{IP: ip, Username: username, KeyFile: keyFile}
@@ -172,6 +179,53 @@ func WithOutput(output Output) StageOption {
 // NewOutput creates an output collection rule.
 func NewOutput(name, remotePath string) Output {
 	return Output{Name: name, RemotePath: remotePath}
+}
+
+// CleanupOption configures a Cleanup created with NewCleanup.
+type CleanupOption func(*Cleanup)
+
+// NewCleanup creates a workflow cleanup step.
+func NewCleanup(name string, options ...CleanupOption) Cleanup {
+	step := Cleanup{Name: name}
+	for _, option := range options {
+		option(&step)
+	}
+	return step
+}
+
+// CleanupOnHost sets the cleanup host.
+func CleanupOnHost(alias string) CleanupOption {
+	return func(step *Cleanup) {
+		step.Host = alias
+	}
+}
+
+// CleanupOnHosts sets multiple cleanup hosts.
+func CleanupOnHosts(aliases ...string) CleanupOption {
+	return func(step *Cleanup) {
+		step.Hosts = append([]string(nil), aliases...)
+	}
+}
+
+// CleanupCommand sets the shell command for a cleanup step.
+func CleanupCommand(command string) CleanupOption {
+	return func(step *Cleanup) {
+		step.Command = command
+	}
+}
+
+// CleanupScript sets the script path for a cleanup step.
+func CleanupScript(script string) CleanupOption {
+	return func(step *Cleanup) {
+		step.Script = script
+	}
+}
+
+// CleanupShell overrides the default benchmark shell for a cleanup step.
+func CleanupShell(shell string) CleanupOption {
+	return func(step *Cleanup) {
+		step.Shell = shell
+	}
 }
 
 // Validate validates a config built with Go helpers.

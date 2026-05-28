@@ -47,6 +47,7 @@ stages:
       - name: load_test_results
         remote_path: /tmp/load_test_results.csv
 
+cleanup:
   - name: cleanup-container
     host: local
     command: |
