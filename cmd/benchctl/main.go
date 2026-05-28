@@ -51,6 +51,10 @@ var skipFlag = &cli.StringSliceFlag{
 	Name:  "skip",
 	Usage: "Skip stages by name (can be used multiple times)",
 }
+var caseFlag = &cli.StringSliceFlag{
+	Name:  "case",
+	Usage: "Run only the named case(s); repeat to select multiple",
+}
 
 func main() {
 	internal.ConfigureDefaultLogger()
@@ -97,6 +101,9 @@ func main() {
 					for _, stageName := range cmd.StringSlice(skipFlag.Name) {
 						runOptions = append(runOptions, run.Skip(stageName))
 					}
+					for _, caseName := range cmd.StringSlice(caseFlag.Name) {
+						runOptions = append(runOptions, run.OnlyCase(caseName))
+					}
 					if cmd.IsSet(timeoutFlag.Name) {
 						runOptions = append(runOptions, run.WithTimeout(cmd.Duration(timeoutFlag.Name)))
 					}
@@ -108,6 +115,7 @@ func main() {
 					metadataFlag,
 					environmentFlag,
 					skipFlag,
+					caseFlag,
 					timeoutFlag,
 				},
 			},

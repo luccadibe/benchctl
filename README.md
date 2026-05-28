@@ -257,6 +257,10 @@ benchctl run --config benchmark.yaml
 # Skip stages by name
 benchctl run --config benchmark.yaml --skip setup --skip warmup
 
+# Run only selected comparison cases
+benchctl run --config benchmark.yaml --case postgres
+benchctl run --config benchmark.yaml --case postgres --case mysql
+
 # Add custom metadata when starting a run
 benchctl run --config benchmark.yaml --metadata "someFeature"="true" --metadata "someOtherFeature"="false"
 

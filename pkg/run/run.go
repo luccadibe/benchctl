@@ -22,6 +22,7 @@ type runParams struct {
 	metadata map[string]string
 	env      map[string]string
 	skip     []string
+	cases    []string
 	timeout  time.Duration
 }
 
@@ -65,6 +66,9 @@ func runConfig(ctx context.Context, cfg *config.Config, opts ...Option) (*Result
 	// applying different runtime options for each run.
 	cloned := cfg.Clone()
 	if err := applyRuntimeSkip(cloned, params.skip); err != nil {
+		return nil, err
+	}
+	if err := applyRuntimeCases(cloned, params.cases); err != nil {
 		return nil, err
 	}
 	if err := cloned.Validate(); err != nil {
@@ -134,6 +138,17 @@ func WithEnvMap(env map[string]string) Option {
 	}
 }
 
+// OnlyCase limits execution to a named comparison case for this run only.
+func OnlyCase(name string) Option {
+	return func(params *runParams) error {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("case name must be non-empty")
+		}
+		params.cases = append(params.cases, name)
+		return nil
+	}
+}
+
 // Skip skips a stage by name for this run only.
 func Skip(stageName string) Option {
 	return func(params *runParams) error {
@@ -154,6 +169,43 @@ func WithTimeout(timeout time.Duration) Option {
 		params.timeout = timeout
 		return nil
 	}
+}
+
+func applyRuntimeCases(cfg *config.Config, caseNames []string) error {
+	if len(caseNames) == 0 {
+		return nil
+	}
+	if len(cfg.Cases) == 0 {
+		return fmt.Errorf("case filter requires cases in config")
+	}
+
+	requested := make(map[string]struct{}, len(caseNames))
+	for _, caseName := range caseNames {
+		name := strings.TrimSpace(caseName)
+		if name == "" {
+			return fmt.Errorf("case name must be non-empty")
+		}
+		requested[name] = struct{}{}
+	}
+
+	configured := make(map[string]struct{}, len(cfg.Cases))
+	for _, benchmarkCase := range cfg.Cases {
+		configured[benchmarkCase.Name] = struct{}{}
+	}
+	for name := range requested {
+		if _, ok := configured[name]; !ok {
+			return fmt.Errorf("unknown case for filter: %s", name)
+		}
+	}
+
+	filtered := make([]config.Case, 0, len(requested))
+	for _, benchmarkCase := range cfg.Cases {
+		if _, ok := requested[benchmarkCase.Name]; ok {
+			filtered = append(filtered, benchmarkCase)
+		}
+	}
+	cfg.Cases = filtered
+	return nil
 }
 
 func applyRuntimeSkip(cfg *config.Config, skipStages []string) error {
