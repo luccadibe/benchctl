@@ -85,6 +85,79 @@ func resolveOutput(output config.Output, env map[string]string) (resolvedOutput,
 	}, nil
 }
 
+// prepareMetadataForSave resolves $VAR templates in the config snapshot written to
+// metadata.json. Stage commands and outputs use the same env as execution; templates
+// that would expand differently per case or host (e.g. ${BENCHCTL_HOST}) are left as-is.
+func prepareMetadataForSave(metadata *RunMetadata, runID, runDir string, envVars map[string]string) {
+	if metadata == nil || metadata.Config == nil {
+		return
+	}
+	cfg := metadata.Config
+	for i := range cfg.Stages {
+		envs := stageEnvs(cfg, runID, runDir, envVars, cfg.Stages[i])
+		stage := &cfg.Stages[i]
+		if v, ok := uniqueExpansion(stage.Command, envs); ok {
+			stage.Command = v
+		}
+		for j := range stage.Outputs {
+			if v, ok := uniqueExpansion(stage.Outputs[j].Name, envs); ok {
+				stage.Outputs[j].Name = v
+			}
+			if v, ok := uniqueExpansion(stage.Outputs[j].RemotePath, envs); ok {
+				stage.Outputs[j].RemotePath = v
+			}
+		}
+	}
+	if len(metadata.Custom) == 0 {
+		return
+	}
+	benchmarkCase := config.Case{}
+	if cases := workflowCases(cfg); len(cases) == 1 {
+		benchmarkCase = cases[0]
+	}
+	env := buildStageEnv(runID, runDir, cfg, envVars, benchmarkCase, "")
+	for k, v := range metadata.Custom {
+		if expanded, err := expandTemplate(v, env); err == nil {
+			metadata.Custom[k] = expanded
+		}
+	}
+}
+
+// stageEnvs returns one env map per case/host combination that would run the stage.
+func stageEnvs(cfg *config.Config, runID, runDir string, envVars map[string]string, stage config.Stage) []map[string]string {
+	var envs []map[string]string
+	for _, benchmarkCase := range workflowCases(cfg) {
+		if !stageAppliesToCase(stage, benchmarkCase) {
+			continue
+		}
+		for _, host := range resolveStageHosts(stage) {
+			envs = append(envs, buildStageEnv(runID, runDir, cfg, envVars, benchmarkCase, host))
+		}
+	}
+	return envs
+}
+
+// uniqueExpansion expands template when every env in envs yields the same result.
+func uniqueExpansion(template string, envs []map[string]string) (string, bool) {
+	if !strings.Contains(template, "$") {
+		return template, true
+	}
+	if len(envs) == 0 {
+		return "", false
+	}
+	first, err := expandTemplate(template, envs[0])
+	if err != nil {
+		return "", false
+	}
+	for _, env := range envs[1:] {
+		expanded, err := expandTemplate(template, env)
+		if err != nil || expanded != first {
+			return "", false
+		}
+	}
+	return first, true
+}
+
 func collectStageOutputs(
 	ctx context.Context,
 	client execution.ExecutionClient,

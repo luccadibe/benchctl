@@ -101,6 +101,7 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	}
 
 	metadata.EndTime = time.Now()
+	prepareMetadataForSave(metadata, runID, runDir, envVars)
 	if err := saveMetadata(metadata, runDir); err != nil {
 		logError(logger, "save metadata failed", err, "run_id", runID)
 		return nil, err

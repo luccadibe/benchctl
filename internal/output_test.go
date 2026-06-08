@@ -117,6 +117,61 @@ func TestResolveOutput(t *testing.T) {
 	})
 }
 
+func TestPrepareMetadataForSave(t *testing.T) {
+	outputDir := t.TempDir()
+	runDir := filepath.Join(outputDir, "1")
+
+	t.Run("expands case env", func(t *testing.T) {
+		cfg := &config.Config{
+			Benchmark: config.Benchmark{Name: "bench", OutputDir: outputDir},
+			Cases: []config.Case{{
+				Name: "openfaas",
+				Env:  map[string]string{"BENCH_PLATFORM": "openfaas"},
+			}},
+			Stages: []config.Stage{{
+				Name:    "run",
+				Command: "echo ${BENCH_PLATFORM}",
+				Outputs: []config.Output{{
+					Name:       "${BENCH_PLATFORM}-sustained",
+					RemotePath: "/tmp/${BENCH_PLATFORM}-sustained.csv",
+				}},
+			}},
+		}
+		metadata := &RunMetadata{Config: cfg}
+		prepareMetadataForSave(metadata, "1", runDir, nil)
+
+		stage := metadata.Config.Stages[0]
+		if stage.Command != "echo openfaas" {
+			t.Fatalf("command = %q", stage.Command)
+		}
+		if stage.Outputs[0].Name != "openfaas-sustained" {
+			t.Fatalf("name = %q", stage.Outputs[0].Name)
+		}
+	})
+
+	t.Run("keeps host-specific templates", func(t *testing.T) {
+		cfg := &config.Config{
+			Benchmark: config.Benchmark{Name: "bench", OutputDir: outputDir},
+			Stages: []config.Stage{{
+				Name:    "run",
+				Hosts:   []string{"vm1", "vm2"},
+				Command: "echo ok",
+				Outputs: []config.Output{{
+					Name:       "${BENCHCTL_HOST}-metrics",
+					RemotePath: "/tmp/${BENCHCTL_HOST}-metrics.csv",
+				}},
+			}},
+		}
+		metadata := &RunMetadata{Config: cfg}
+		prepareMetadataForSave(metadata, "1", runDir, nil)
+
+		output := metadata.Config.Stages[0].Outputs[0]
+		if output.Name != "${BENCHCTL_HOST}-metrics" {
+			t.Fatalf("name = %q", output.Name)
+		}
+	})
+}
+
 func TestCollectStageOutputs(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	client := execution.NewLocalClient()
