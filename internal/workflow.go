@@ -28,6 +28,8 @@ type RunMetadata struct {
 	Cases         []config.Case          `json:"cases,omitempty"`
 	Custom        map[string]string      `json:"custom,omitempty"`
 	Git           *GitMetadata           `json:"git,omitempty"`
+	Status        string                 `json:"status"`          // "success" or "failed"
+	Error         string                 `json:"error,omitempty"` // empty on success, contains error string on failure
 }
 
 // RunResult describes a completed workflow invocation.
@@ -67,22 +69,44 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 		RunID:         runID,
 		BenchmarkName: cfg.Benchmark.Name,
 		StartTime:     time.Now(),
+		Status:        "success",
 		Config:        cfg,
 		Hosts:         cfg.Hosts,
 		Cases:         cfg.Cases,
 		Custom:        customMetadata,
 	}
 
+	result := &RunResult{
+		RunID:    runID,
+		RunDir:   runDir,
+		Metadata: metadata,
+	}
+
 	logger, logWriter, closeLogger, err := createLogger(cfg, runDir)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	defer closeLogger()
+
+	var runErr error
+	defer func() {
+		metadata.EndTime = time.Now()
+		if runErr != nil {
+			metadata.Status = "failed"
+			metadata.Error = runErr.Error()
+		}
+		prepareMetadataForSave(metadata, runID, runDir, envVars)
+		if err := saveMetadata(metadata, runDir); err != nil {
+			logError(logger, "save metadata failed", err, "run_id", runID)
+		}
+	}()
+
 	logger.Info("run started", "run_id", runID, "run_dir", runDir)
 	gitMetadata, err := CaptureGitMetadata(ctx, cfg, runDir)
 	if err != nil {
 		logError(logger, "git metadata capture failed", err, "run_id", runID)
-		return nil, err
+		runErr = err
+		return result, runErr
 	}
 	metadata.Git = gitMetadata
 	if gitMetadata != nil {
@@ -97,18 +121,12 @@ func RunWorkflow(ctx context.Context, cfg *config.Config, customMetadata map[str
 	joined := errors.Join(stageErr, stopErr, cleanupErr)
 	if joined != nil {
 		logError(logger, "workflow failed", joined, "run_id", runID)
-		return nil, fmt.Errorf("workflow failed: %w", joined)
-	}
-
-	metadata.EndTime = time.Now()
-	prepareMetadataForSave(metadata, runID, runDir, envVars)
-	if err := saveMetadata(metadata, runDir); err != nil {
-		logError(logger, "save metadata failed", err, "run_id", runID)
-		return nil, err
+		runErr = fmt.Errorf("workflow failed: %w", joined)
+		return result, runErr
 	}
 
 	logger.Info("workflow completed", "run_id", runID, "run_dir", runDir)
-	return &RunResult{RunID: runID, RunDir: runDir, Metadata: metadata}, nil
+	return result, nil
 }
 
 // executeStages executes the stages of the benchmark
